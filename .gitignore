@@ -1,7 +1,9 @@
 # Dependencies
 node_modules/
 npm-debug.log*
-
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
 # Hardhat files
 cache/
@@ -11,13 +13,16 @@ typechain-types/
 
 # Environment variables
 .env
-
+.env.local
+.env*.local
 
 # IDE files
 .idea/
 *.swp
 *.swo
 *~
+.vscode/
+*.code-workspace
 
 # OS generated files
 .DS_Store
@@ -31,6 +36,9 @@ Thumbs.db
 # Logs
 logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Coverage directory
 coverage/
@@ -39,13 +47,7 @@ coverage.json
 
 # Optional npm cache directory
 .npm
-
-# Optional eslint cache
 .eslintcache
-
-# Editor directories and files
-.vscode
-
 
 # Solidity
 *.abi
@@ -56,6 +58,8 @@ coverage.json
 build/
 dist/
 out/
+.next/
+.vercel/
 
 # Local development
 .local/
@@ -66,3 +70,24 @@ apply-theme.sh
 check-colors.sh
 fix-syntax.sh
 deployed-addresses.json
+
+# Rust/Cargo
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Stylus build artifacts
+stylus/target/
+stylus/Cargo.lock
+
+# Frontend build artifacts
+frontend/.next/
+frontend/node_modules/
+frontend/out/
+frontend/build/
+frontend/dist/
+
+# Deployment files
+deployed.json
+*.deployed
