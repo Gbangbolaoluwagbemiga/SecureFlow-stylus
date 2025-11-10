@@ -48,3 +48,4 @@ https://github.com/OffchainLabs/stylus-sdk-rs/issues
 ❌ **SDK**: Blocked by dependency issue
 
 The contract code is ready - we just need to resolve the SDK compilation issue.
+

@@ -102,3 +102,4 @@ After deployment, initialize the contract and update the frontend config.
 - Remaining errors are minor and can be fixed quickly
 - Frontend is ready for integration once contract is deployed
 - Farcaster code has been completely removed
+

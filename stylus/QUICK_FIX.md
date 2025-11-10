@@ -62,3 +62,4 @@ cd stylus-hello-world
 ❌ **SDK Compilation**: Blocked by SDK dependency issue
 
 The code is ready - we just need to resolve the SDK compilation issue.
+

@@ -81,3 +81,4 @@ The ABI is automatically generated during build. It can be found in:
 
 The contract is fully compatible with existing frontend code. Simply update the contract address in your frontend configuration.
 
+

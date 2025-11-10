@@ -97,3 +97,4 @@ Then update `frontend/lib/web3/config.ts` with the new contract address.
 - SDK 0.6 API differences need to be addressed
 - Frontend is ready for integration once contract is deployed
 - Farcaster code has been completely removed
+
