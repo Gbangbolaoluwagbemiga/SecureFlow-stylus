@@ -21,14 +21,7 @@ import { AdminStats } from "@/components/admin/admin-stats";
 import { ContractControls } from "@/components/admin/contract-controls";
 import { AdminLoading } from "@/components/admin/admin-loading";
 import { DisputeResolution } from "@/components/admin/dispute-resolution";
-import {
-  Lock,
-  Shield,
-  Play,
-  Pause,
-  Download,
-  AlertTriangle,
-} from "lucide-react";
+import { Lock, Shield, Play, Pause, AlertTriangle } from "lucide-react";
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -43,13 +36,9 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [contractOwner, setContractOwner] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [actionType, setActionType] = useState<
-    "pause" | "unpause" | "withdraw" | null
-  >(null);
-  const [withdrawData, setWithdrawData] = useState({
-    token: CONTRACTS.MOCK_ERC20,
-    amount: "",
-  });
+  const [actionType, setActionType] = useState<"pause" | "unpause" | null>(
+    null
+  );
   const [testMode, setTestMode] = useState(false);
   const [contractStats, setContractStats] = useState({
     platformFeeBP: 0,
@@ -161,12 +150,6 @@ export default function AdminPage() {
               description: "Simulated: Escrow operations have been resumed",
             });
             break;
-          case "withdraw":
-            toast({
-              title: "🧪 Test Mode: Tokens withdrawn",
-              description: `Simulated: Withdrew ${withdrawData.amount} tokens from ${withdrawData.token}`,
-            });
-            break;
         }
         setDialogOpen(false);
         return;
@@ -269,19 +252,6 @@ export default function AdminPage() {
             description: "Escrow operations have been resumed",
           });
           break;
-        case "withdraw":
-          await contract.send(
-            "withdrawStuckTokens",
-            "no-value",
-            withdrawData.token,
-            withdrawData.amount
-          );
-          toast({
-            title: "Tokens withdrawn",
-            description: `Successfully withdrew ${withdrawData.amount} tokens`,
-          });
-          setWithdrawData({ token: CONTRACTS.MOCK_ERC20, amount: "" });
-          break;
       }
 
       setDialogOpen(false);
@@ -318,16 +288,6 @@ export default function AdminPage() {
           icon: Play,
           confirmText: testMode ? "Simulate Unpause" : "Unpause Contract",
           variant: "default" as const,
-        };
-      case "withdraw":
-        return {
-          title: `${testModePrefix}Withdraw Stuck Tokens${testModeSuffix}`,
-          description: testMode
-            ? "This will simulate withdrawing tokens. No real transaction will be sent."
-            : "Withdraw tokens that may be stuck in the contract. This should only be used in emergency situations.",
-          icon: Download,
-          confirmText: testMode ? "Simulate Withdraw" : "Withdraw Tokens",
-          variant: "destructive" as const,
         };
       default:
         return {
@@ -602,31 +562,6 @@ export default function AdminPage() {
                 )}
               </Button>
             </Card>
-
-            <Card className="glass border-primary/20 p-6">
-              <div className="flex items-start gap-4 mb-4">
-                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-destructive/10">
-                  <Download className="h-6 w-6 text-destructive" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-xl font-bold mb-2">
-                    Withdraw Stuck Tokens
-                  </h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    Emergency function to withdraw tokens that may be stuck in
-                    the contract
-                  </p>
-                </div>
-              </div>
-              <Button
-                onClick={() => openDialog("withdraw")}
-                variant="destructive"
-                className="w-full gap-2"
-              >
-                <Download className="h-4 w-4" />
-                Withdraw Tokens
-              </Button>
-            </Card>
           </div>
 
           <Card className="glass border-primary/20 p-6">
@@ -661,14 +596,14 @@ export default function AdminPage() {
                   Network
                 </Label>
                 <p className="text-sm bg-muted/50 p-3 rounded-lg">
-                  Base Sepolia Testnet
+                  Arbitrum Sepolia Testnet
                 </p>
               </div>
               <div>
                 <Label className="text-muted-foreground mb-2 block">
                   Chain ID
                 </Label>
-                <p className="text-sm bg-muted/50 p-3 rounded-lg">84532</p>
+                <p className="text-sm bg-muted/50 p-3 rounded-lg">421614</p>
               </div>
               <div>
                 <Label className="text-muted-foreground mb-2 block">
@@ -745,35 +680,6 @@ export default function AdminPage() {
               {dialogContent.description}
             </DialogDescription>
           </DialogHeader>
-
-          {actionType === "withdraw" && (
-            <div className="space-y-4 my-4">
-              <div className="space-y-2">
-                <Label htmlFor="token">Token Address</Label>
-                <Input
-                  id="token"
-                  placeholder="0x..."
-                  value={withdrawData.token}
-                  onChange={(e) =>
-                    setWithdrawData({ ...withdrawData, token: e.target.value })
-                  }
-                  className="font-mono"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  placeholder="1000"
-                  value={withdrawData.amount}
-                  onChange={(e) =>
-                    setWithdrawData({ ...withdrawData, amount: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-          )}
 
           <Alert
             variant={

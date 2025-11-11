@@ -3,10 +3,7 @@
 extern crate alloc;
 use alloc::{string::String, vec::Vec};
 
-use stylus_sdk::{
-    prelude::*,
-    msg,
-};
+use stylus_sdk::msg;
 use alloy_primitives::{Address, U256};
 use crate::storage::SecureFlow;
 use crate::errors::Error;
@@ -18,7 +15,6 @@ impl SecureFlow {
         self.max_duration.set(U256::from(31536000)); // 365 days
         self.dispute_period.set(U256::from(604800)); // 7 days
         self.emergency_refund_delay.set(U256::from(2592000)); // 30 days
-        self.max_platform_fee_bp.set(U256::from(1000)); // 10%
         self.max_arbiters.set(U256::from(5));
         self.max_milestones.set(U256::from(20));
         self.max_applications.set(U256::from(50));
@@ -28,14 +24,6 @@ impl SecureFlow {
     }
     
     // Helper functions
-    pub fn calculate_fee(&self, amount: U256) -> U256 {
-        let fee_bp = self.platform_fee_bp.get();
-        if fee_bp == U256::ZERO {
-            return U256::ZERO;
-        }
-        (amount * fee_bp) / U256::from(10000)
-    }
-    
     pub fn is_arbiter_for_escrow_internal(&self, escrow_id: U256, arbiter: Address) -> bool {
         let escrow = self.escrows.get(escrow_id);
         let arbiters = &escrow.arbiters;
@@ -64,21 +52,21 @@ impl SecureFlow {
     // Access control
     pub fn only_owner(&self) -> Result<(), Vec<u8>> {
         if msg::sender() != self.owner.get() {
-            return Err(Error::Unauthorized(String::from("Not owner")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
         Ok(())
     }
     
     pub fn when_not_paused(&self) -> Result<(), Vec<u8>> {
         if self.paused.get() {
-            return Err(Error::Paused(String::from("Contract paused")).into());
+            return Err(Error::Paused(String::new()).into());
         }
         Ok(())
     }
     
     pub fn when_job_creation_not_paused(&self) -> Result<(), Vec<u8>> {
         if self.job_creation_paused.get() {
-            return Err(Error::JobCreationPaused(String::from("Job creation paused")).into());
+            return Err(Error::JobCreationPaused(String::new()).into());
         }
         Ok(())
     }

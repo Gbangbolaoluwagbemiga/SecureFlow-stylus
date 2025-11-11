@@ -21,7 +21,7 @@ interface Milestone {
 
 export default function CreateEscrowPage() {
   const router = useRouter();
-  const { wallet, getContract, switchToBaseTestnet } = useWeb3();
+  const { wallet, getContract, switchToArbitrumSepolia } = useWeb3();
   const { executeTransaction, isSmartAccountReady } = useSmartAccount();
   const { toast } = useToast();
   const [step, setStep] = useState(1);
@@ -57,7 +57,7 @@ export default function CreateEscrowPage() {
       const currentChainId = await window.ethereum.request({
         method: "eth_chainId",
       });
-      const targetChainId = "0x14A34"; // Base Sepolia Testnet
+      const targetChainId = "0x66EEE"; // Arbitrum Sepolia Testnet
 
       setIsOnCorrectNetwork(
         currentChainId.toLowerCase() === targetChainId.toLowerCase()
@@ -778,16 +778,16 @@ export default function CreateEscrowPage() {
                     Wrong Network
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    Please switch to Base Sepolia Testnet to create escrows
+                    Please switch to Arbitrum Sepolia Testnet to create escrows
                   </p>
                 </div>
               </div>
               <Button
-                onClick={switchToBaseTestnet}
+                onClick={switchToArbitrumSepolia}
                 variant="destructive"
                 size="sm"
               >
-                Switch to Base Sepolia
+                Switch to Arbitrum Sepolia
               </Button>
             </div>
           </div>

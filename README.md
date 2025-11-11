@@ -6,7 +6,7 @@
 
 ## 🚀 Overview
 
-SecureFlow is a comprehensive decentralized platform combining escrow services with a freelance marketplace, built on Base blockchain. Features gasless transactions through MetaMask Smart Accounts, multi-arbiter dispute resolution, and reputation systems.
+SecureFlow is a comprehensive decentralized platform combining escrow services with a freelance marketplace, built on Arbitrum Stylus (Rust/WASM). Features gasless transactions through MetaMask Smart Accounts, multi-arbiter dispute resolution, and reputation systems.
 
 ## ✨ Key Features
 
@@ -16,7 +16,7 @@ SecureFlow is a comprehensive decentralized platform combining escrow services w
 - **Gasless Transactions**: MetaMask Smart Account integration for zero-fee transactions
 - **Multi-Arbiter Consensus**: 1-5 arbiters with quorum-based voting
 - **Reputation System**: Anti-gaming reputation tracking
-- **Native & ERC20 Support**: ETH and whitelisted ERC20 tokens (USDC on Base)
+- **Native & ERC20 Support**: ETH and whitelisted ERC20 tokens (USDC on Arbitrum)
 
 ### 🎯 Advanced Features
 
@@ -155,18 +155,15 @@ vercel --prod
 
 ## 📊 Current Deployment
 
-### Base Testnet (Active)
-- **SecureFlow Contract**: `0xC423E1272d73C2a80F6e4450b35F4eC134101DEe`
-- **MockERC20 Token**: `0x7ab26a7ce5d4479bf6Be1B30D27a74C4a997ebf4`
-- **Network**: Base Testnet (Chain ID: 84532)
-- **Explorer**: https://sepolia.basescan.org/address/0xC423E1272d73C2a80F6e4450b35F4eC134101DEe
-- **Status**: ✅ Production Ready
+### Arbitrum Sepolia Testnet (Active) ✅
 
-### Base Mainnet (Pending)
-- **Status**: ⚠️ Pending deployment (requires funding)
-- **Deployer**: `0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41`
-- **Required**: 0.02+ ETH for deployment
-- **Network**: Base Mainnet (Chain ID: 8453)
+- **SecureFlow Stylus Contract**: `0x7e7b5dbae3adb3d94a27dcfb383bdb98667145e6`
+- **MockERC20 Token**: `0x7659C2E485D3E29dBC36f7E11de9E633ED1FDa06`
+- **Network**: Arbitrum Sepolia Testnet (Chain ID: 421614)
+- **Explorer**: https://sepolia.arbiscan.io/address/0x7e7b5dbae3adb3d94a27dcfb383bdb98667145e6
+- **Status**: ✅ Production Ready
+- **Contract Size**: 23.6 KiB
+- **Technology**: Arbitrum Stylus (Rust/WASM)
 
 ## 🔧 Configuration
 
@@ -184,12 +181,12 @@ function revokeArbiter(address arbiter) external onlyOwner
 ### Frontend Configuration
 
 ```typescript
-// Contract addresses (Base Testnet)
+// Contract addresses (Arbitrum Sepolia Testnet)
 export const CONTRACTS = {
-  SECUREFLOW_ESCROW_TESTNET: "0xC423E1272d73C2a80F6e4450b35F4eC134101DEe",
-  SECUREFLOW_ESCROW_MAINNET: "TBD", // Pending Base mainnet deployment
-  MOCK_TOKEN_TESTNET: "0x7ab26a7ce5d4479bf6Be1B30D27a74C4a997ebf4",
-  USDC_BASE_MAINNET: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  SECUREFLOW_ESCROW_TESTNET: "0x7e7b5dbae3adb3d94a27dcfb383bdb98667145e6",
+  SECUREFLOW_ESCROW_MAINNET: "TBD", // Pending Arbitrum One mainnet deployment
+  MOCK_TOKEN_TESTNET: "0x7659C2E485D3E29dBC36f7E11de9E633ED1FDa06",
+  USDC_ARBITRUM_MAINNET: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
 };
 ```
 

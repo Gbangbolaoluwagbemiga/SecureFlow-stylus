@@ -1,38 +1,38 @@
-export const BASE_MAINNET = {
-  chainId: "0x2105", // 8453 in hex (Base Mainnet)
-  chainName: "Base",
+export const ARBITRUM_ONE = {
+  chainId: "0xA4B1", // 42161 in hex (Arbitrum One Mainnet)
+  chainName: "Arbitrum One",
   nativeCurrency: {
     name: "Ethereum",
     symbol: "ETH",
     decimals: 18,
   },
-  rpcUrls: ["https://mainnet.base.org"],
-  blockExplorerUrls: ["https://basescan.org"],
+  rpcUrls: ["https://arb1.arbitrum.io/rpc"],
+  blockExplorerUrls: ["https://arbiscan.io"],
 };
 
-export const BASE_TESTNET = {
-  chainId: "0x14A34", // 84532 in hex (Base Sepolia Testnet)
-  chainName: "Base Sepolia",
+export const ARBITRUM_SEPOLIA = {
+  chainId: "0x66EEE", // 421614 in hex (Arbitrum Sepolia Testnet)
+  chainName: "Arbitrum Sepolia",
   nativeCurrency: {
     name: "Ethereum",
     symbol: "ETH",
     decimals: 18,
   },
-  rpcUrls: ["https://sepolia.base.org"],
-  blockExplorerUrls: ["https://sepolia.basescan.org"],
+  rpcUrls: ["https://sepolia-rollup.arbitrum.io/rpc"],
+  blockExplorerUrls: ["https://sepolia.arbiscan.io"],
 };
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 export const CONTRACTS = {
-  // Base Testnet - DEPLOYED ✅
-  SECUREFLOW_ESCROW_TESTNET: "0xd74f3b3f4f2FF04E3eFE2B494A4BE93Eb55E7A94",
+  // Arbitrum Sepolia Stylus - DEPLOYED ✅
+  SECUREFLOW_ESCROW_TESTNET: "0x7e7b5dbae3adb3d94a27dcfb383bdb98667145e6",
   MOCK_TOKEN_TESTNET: "0x7659C2E485D3E29dBC36f7E11de9E633ED1FDa06",
 
   // Default contracts (used by frontend)
-  SECUREFLOW_ESCROW: "0xd74f3b3f4f2FF04E3eFE2B494A4BE93Eb55E7A94",
+  SECUREFLOW_ESCROW: "0x7e7b5dbae3adb3d94a27dcfb383bdb98667145e6",
   USDC: "0x7659C2E485D3E29dBC36f7E11de9E633ED1FDa06",
   MOCK_ERC20: "0x7659C2E485D3E29dBC36f7E11de9E633ED1FDa06",
 
-  BASESCAN_API_KEY: "C9CFD5REN63QS5AESUEF3WJ6EPPWJ2UN9R",
+  ARBISCAN_API_KEY: "C9CFD5REN63QS5AESUEF3WJ6EPPWJ2UN9R",
 };

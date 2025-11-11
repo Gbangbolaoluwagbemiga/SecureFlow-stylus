@@ -3,9 +3,7 @@
 extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::format;
 
-use stylus_sdk::prelude::*;
 
 // Custom error type for SDK 0.6
 pub enum Error {
@@ -31,27 +29,27 @@ pub enum Error {
 
 impl From<Error> for Vec<u8> {
     fn from(err: Error) -> Self {
-        let msg = match err {
-            Error::Unauthorized(s) => format!("Unauthorized: {}", s),
-            Error::Paused(s) => format!("Paused: {}", s),
-            Error::JobCreationPaused(s) => format!("JobCreationPaused: {}", s),
-            Error::InvalidEscrow(s) => format!("InvalidEscrow: {}", s),
-            Error::InvalidStatus(s) => format!("InvalidStatus: {}", s),
-            Error::InvalidAmount(s) => format!("InvalidAmount: {}", s),
-            Error::InvalidDuration(s) => format!("InvalidDuration: {}", s),
-            Error::TooManyArbiters(s) => format!("TooManyArbiters: {}", s),
-            Error::TooManyMilestones(s) => format!("TooManyMilestones: {}", s),
-            Error::TokenNotWhitelisted(s) => format!("TokenNotWhitelisted: {}", s),
-            Error::ArbiterNotAuthorized(s) => format!("ArbiterNotAuthorized: {}", s),
-            Error::WorkNotStarted(s) => format!("WorkNotStarted: {}", s),
-            Error::MilestoneNotFound(s) => format!("MilestoneNotFound: {}", s),
-            Error::AlreadySubmitted(s) => format!("AlreadySubmitted: {}", s),
-            Error::DisputePeriodExpired(s) => format!("DisputePeriodExpired: {}", s),
-            Error::NothingToRefund(s) => format!("NothingToRefund: {}", s),
-            Error::DeadlineNotPassed(s) => format!("DeadlineNotPassed: {}", s),
-            Error::EmergencyPeriodNotReached(s) => format!("EmergencyPeriodNotReached: {}", s),
-        };
-        msg.into_bytes()
+        // Use shorter error codes to save space
+        match err {
+            Error::Unauthorized(_) => b"UNAUTH".to_vec(),
+            Error::Paused(_) => b"PAUSED".to_vec(),
+            Error::JobCreationPaused(_) => b"JOB_PAUSED".to_vec(),
+            Error::InvalidEscrow(_) => b"INV_ESCROW".to_vec(),
+            Error::InvalidStatus(_) => b"INV_STATUS".to_vec(),
+            Error::InvalidAmount(_) => b"INV_AMT".to_vec(),
+            Error::InvalidDuration(_) => b"INV_DUR".to_vec(),
+            Error::TooManyArbiters(_) => b"TOO_ARB".to_vec(),
+            Error::TooManyMilestones(_) => b"TOO_MS".to_vec(),
+            Error::TokenNotWhitelisted(_) => b"TOKEN_NW".to_vec(),
+            Error::ArbiterNotAuthorized(_) => b"ARB_NW".to_vec(),
+            Error::WorkNotStarted(_) => b"WORK_NW".to_vec(),
+            Error::MilestoneNotFound(_) => b"MS_NF".to_vec(),
+            Error::AlreadySubmitted(_) => b"ALREADY".to_vec(),
+            Error::DisputePeriodExpired(_) => b"DISP_EXP".to_vec(),
+            Error::NothingToRefund(_) => b"NO_REFUND".to_vec(),
+            Error::DeadlineNotPassed(_) => b"DEADLINE".to_vec(),
+            Error::EmergencyPeriodNotReached(_) => b"EMERG_NR".to_vec(),
+        }
     }
 }
 

@@ -4,9 +4,6 @@
 #![cfg_attr(not(feature = "export-abi"), no_std)]
 
 extern crate alloc;
-use alloc::{string::String, vec::Vec};
-
-use stylus_sdk::prelude::*;
 
 // Module declarations
 pub mod types;

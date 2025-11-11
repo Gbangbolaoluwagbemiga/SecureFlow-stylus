@@ -207,7 +207,7 @@ export function ProjectDetailsStep({
               ) : (
                 <p className="text-xs text-muted-foreground mt-1">
                   Enter the contract address of your ERC20 token deployed on
-                  Base Sepolia Testnet. Default: MockERC20 token
+                  Arbitrum Sepolia Testnet. Default: MockERC20 token
                 </p>
               )}
             </div>

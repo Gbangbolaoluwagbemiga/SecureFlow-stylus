@@ -28,3 +28,6 @@ strip = true        # Strip symbols
 debug = false       # No debug info
 incremental = false # Disable incremental compilation
 
+[profile.release.package."*"]
+opt-level = "z"
+

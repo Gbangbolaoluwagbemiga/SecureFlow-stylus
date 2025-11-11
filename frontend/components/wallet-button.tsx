@@ -2,17 +2,97 @@
 
 import { Button } from "@/components/ui/button";
 import { useWeb3 } from "@/contexts/web3-context";
-import { useAppKit } from "@reown/appkit/react";
-import { useState } from "react";
+import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
+import { useToast } from "@/hooks/use-toast";
+import { useState, useRef } from "react";
 
 export function WalletButton() {
   const { wallet } = useWeb3();
   const { open } = useAppKit();
+  const { address: appKitAddress, isConnected: appKitConnected } =
+    useAppKitAccount();
+  const { toast } = useToast();
   const [networkIconError, setNetworkIconError] = useState(false);
   const [walletIconError, setWalletIconError] = useState(false);
+  const connectingRef = useRef(false);
+  const lastDeclinedRef = useRef<number>(0);
 
   const handleClick = async () => {
-    await open?.();
+    // If already connecting, ignore
+    if (connectingRef.current) {
+      return;
+    }
+
+    // If AppKit says we're connected, just open the modal (shows account info)
+    if (appKitConnected && appKitAddress) {
+      if (open) {
+        await open();
+      }
+      return;
+    }
+
+    // Check if we recently got a declined error - wait 3 seconds before retry
+    const timeSinceDeclined = Date.now() - lastDeclinedRef.current;
+    if (timeSinceDeclined < 3000) {
+      toast({
+        title: "Please wait",
+        description:
+          "Please wait a moment before trying again. Check MetaMask for any pending requests.",
+        variant: "default",
+      });
+      return;
+    }
+
+    connectingRef.current = true;
+
+    try {
+      if (!open) {
+        toast({
+          title: "Connection unavailable",
+          description:
+            "Wallet connection is not available. Please refresh the page.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Open AppKit - it will handle the connection flow
+      await open();
+    } catch (error: any) {
+      // Handle specific error codes
+      if (error?.code === 4001) {
+        // User cancelled - don't show error, just log
+        console.log("ℹ️ User cancelled connection");
+      } else if (
+        error?.message?.toLowerCase().includes("pending") ||
+        error?.message?.toLowerCase().includes("active") ||
+        error?.message?.toLowerCase().includes("declined") ||
+        error?.message?.toLowerCase().includes("previous request")
+      ) {
+        // Connection declined due to pending request
+        lastDeclinedRef.current = Date.now();
+        toast({
+          title: "Connection declined",
+          description:
+            "A previous connection request is still active in MetaMask. Please check MetaMask, approve or reject the pending request, then try again in a few seconds.",
+          variant: "destructive",
+        });
+      } else {
+        // Other errors
+        console.error("❌ Wallet connection error:", error);
+        toast({
+          title: "Connection failed",
+          description:
+            error?.message || "Failed to connect wallet. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      // Reset after a short delay
+      setTimeout(() => {
+        connectingRef.current = false;
+      }, 500);
+    }
   };
 
   if (!wallet.isConnected || !wallet.address) {

@@ -12,10 +12,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { Suspense } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppKit } from "@/lib/web3/reown-config";
+import { ErrorSuppressor } from "@/components/error-suppressor";
 
 export const metadata: Metadata = {
-  title: "SecureFlow - Trustless Escrow on Base",
-  description: "Trustless payments with transparent milestones powered by Base",
+  title: "SecureFlow - Trustless Escrow on Arbitrum Stylus",
+  description:
+    "Trustless payments with transparent milestones powered by Arbitrum Stylus",
   generator: "SecureFlow",
   manifest: "/manifest.json",
   icons: {
@@ -42,6 +44,7 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
+        <ErrorSuppressor />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

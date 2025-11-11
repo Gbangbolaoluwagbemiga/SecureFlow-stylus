@@ -8,42 +8,20 @@ use stylus_sdk::{
     prelude::*,
     msg,
     block,
-    contract,
-    call,
 };
 use alloy_primitives::{Address, U256, U8};
 use crate::storage::SecureFlow;
 use crate::errors::Error;
-use crate::types::{EscrowStatus, MilestoneStatus, Milestone, Application};
+use crate::types::{EscrowStatus, MilestoneStatus};
 // Note: SecureFlow is accessed directly from storage, not through helpers/transfers
 
 #[public]
 impl SecureFlow {
     // ===== Initialization =====
-    pub fn init(
-        &mut self,
-        monad_token: Address,
-        fee_collector: Address,
-        platform_fee_bp: U256,
-    ) -> Result<(), Vec<u8>> {
-        if fee_collector == Address::ZERO {
-            return Err(Error::Unauthorized(String::from("Invalid fee collector")).into());
-        }
-        if platform_fee_bp > U256::from(1000) {
-            return Err(Error::InvalidAmount(String::from("Fee too high")).into());
-        }
-
+    pub fn init(&mut self) -> Result<(), Vec<u8>> {
         self.init_constants();
-        self.monad_token.set(monad_token);
-        self.fee_collector.set(fee_collector);
-        self.platform_fee_bp.set(platform_fee_bp);
         self.owner.set(msg::sender());
         self.next_escrow_id.set(U256::from(1));
-
-        if monad_token != Address::ZERO {
-            self.whitelisted_tokens.setter(monad_token).set(true);
-        }
-
         Ok(())
     }
 
@@ -64,20 +42,20 @@ impl SecureFlow {
         self.when_job_creation_not_paused()?;
         
         if token != Address::ZERO && !self.whitelisted_tokens.get(token) {
-            return Err(Error::TokenNotWhitelisted(String::from("Token not whitelisted")).into());
+            return Err(Error::TokenNotWhitelisted(String::new()).into());
         }
 
         if arbiters.is_empty() || arbiters.len() > self.max_arbiters.get().as_limbs()[0] as usize {
-            return Err(Error::TooManyArbiters(String::from("Too many arbiters")).into());
+            return Err(Error::TooManyArbiters(String::new()).into());
         }
 
         if required_confirmations == 0 || required_confirmations as usize > arbiters.len() {
-            return Err(Error::InvalidAmount(String::from("Invalid confirmations")).into());
+            return Err(Error::InvalidAmount(String::new()).into());
         }
 
         for arbiter in &arbiters {
             if !self.authorized_arbiters.get(*arbiter) {
-                return Err(Error::ArbiterNotAuthorized(String::from("Arbiter not authorized")).into());
+                return Err(Error::ArbiterNotAuthorized(String::new()).into());
             }
         }
 
@@ -111,16 +89,16 @@ impl SecureFlow {
         self.when_job_creation_not_paused()?;
 
         if arbiters.is_empty() || arbiters.len() > self.max_arbiters.get().as_limbs()[0] as usize {
-            return Err(Error::TooManyArbiters(String::from("Too many arbiters")).into());
+            return Err(Error::TooManyArbiters(String::new()).into());
         }
 
         if required_confirmations == 0 || required_confirmations as usize > arbiters.len() {
-            return Err(Error::InvalidAmount(String::from("Invalid confirmations")).into());
+            return Err(Error::InvalidAmount(String::new()).into());
         }
 
         for arbiter in &arbiters {
             if !self.authorized_arbiters.get(*arbiter) {
-                return Err(Error::ArbiterNotAuthorized(String::from("Arbiter not authorized")).into());
+                return Err(Error::ArbiterNotAuthorized(String::new()).into());
             }
         }
 
@@ -154,47 +132,44 @@ impl SecureFlow {
         is_native: bool,
     ) -> Result<U256, Vec<u8>> {
         if beneficiary == depositor {
-            return Err(Error::InvalidAmount(String::from("Cannot escrow to self")).into());
+            return Err(Error::InvalidAmount(String::new()).into());
         }
 
         let min_duration = self.min_duration.get();
         let max_duration = self.max_duration.get();
         if duration < min_duration || duration > max_duration {
-            return Err(Error::InvalidDuration(String::from("Invalid duration")).into());
+            return Err(Error::InvalidDuration(String::new()).into());
         }
 
         if milestone_amounts.is_empty() || milestone_amounts.len() > self.max_milestones.get().as_limbs()[0] as usize {
-            return Err(Error::TooManyMilestones(String::from("Too many milestones")).into());
+            return Err(Error::TooManyMilestones(String::new()).into());
         }
 
         if milestone_amounts.len() != milestone_descriptions.len() {
-            return Err(Error::InvalidAmount(String::from("Mismatched arrays")).into());
+            return Err(Error::InvalidAmount(String::new()).into());
         }
 
         if project_title.is_empty() {
-            return Err(Error::InvalidAmount(String::from("Project title required")).into());
+            return Err(Error::InvalidAmount(String::new()).into());
         }
 
         let is_open_job = beneficiary == Address::ZERO;
         let mut total_amount = U256::ZERO;
         for amount in &milestone_amounts {
             if *amount == U256::ZERO {
-                return Err(Error::InvalidAmount(String::from("Invalid milestone amount")).into());
+                return Err(Error::InvalidAmount(String::new()).into());
             }
             total_amount += *amount;
         }
 
-        let platform_fee = self.calculate_fee(total_amount);
-        let total_with_fee = total_amount + platform_fee;
-
         if is_native {
-            if msg::value() != total_with_fee {
-                return Err(Error::InvalidAmount(String::from("Incorrect native amount")).into());
+            if msg::value() != total_amount {
+                return Err(Error::InvalidAmount(String::new()).into());
             }
             let current = self.escrowed_amount.get(Address::ZERO);
             self.escrowed_amount.setter(Address::ZERO).set(current + total_amount);
         } else {
-            self.transfer_in(token, depositor, total_with_fee)?;
+            self.transfer_in(token, depositor, total_amount)?;
             let current = self.escrowed_amount.get(token);
             self.escrowed_amount.setter(token).set(current + total_amount);
         }
@@ -219,7 +194,6 @@ impl SecureFlow {
         escrow.token.set(token);
         escrow.total_amount.set(total_amount);
         escrow.paid_amount.set(U256::ZERO);
-        escrow.platform_fee.set(platform_fee);
         escrow.deadline.set(deadline);
         escrow.status.set(U8::from(EscrowStatus::Pending as u8));
         escrow.work_started.set(false);
@@ -260,30 +234,24 @@ impl SecureFlow {
         
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         if msg::sender() != escrow.beneficiary.get() {
-            return Err(Error::Unauthorized(String::from("Not beneficiary")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
 
         if escrow.status.get() != EscrowStatus::Pending as u8 {
-            return Err(Error::InvalidStatus(String::from("Invalid status")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         if escrow.work_started.get() {
-            return Err(Error::WorkNotStarted(String::from("Work already started")).into());
+            return Err(Error::WorkNotStarted(String::new()).into());
         }
 
-        let platform_fee = escrow.platform_fee.get();
-        let token = escrow.token.get();
         let mut escrow_mut = self.escrows.setter(escrow_id);
         escrow_mut.work_started.set(true);
         escrow_mut.status.set(U8::from(EscrowStatus::InProgress as u8));
-        if platform_fee > U256::ZERO {
-            let current = self.total_fees_by_token.get(token);
-            self.total_fees_by_token.setter(token).set(current + platform_fee);
-        }
 
         Ok(())
     }
@@ -298,25 +266,25 @@ impl SecureFlow {
 
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         if msg::sender() != escrow.beneficiary.get() {
-            return Err(Error::Unauthorized(String::from("Not beneficiary")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
 
         if escrow.status.get() != EscrowStatus::InProgress as u8 {
-            return Err(Error::InvalidStatus(String::from("Invalid status")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         if milestone_index >= escrow.milestone_count.get() {
-            return Err(Error::MilestoneNotFound(String::from("Milestone not found")).into());
+            return Err(Error::MilestoneNotFound(String::new()).into());
         }
 
         let milestones_map = self.milestones.get(escrow_id);
         let milestone = milestones_map.get(milestone_index);
         if milestone.status.get() != MilestoneStatus::NotStarted as u8 {
-            return Err(Error::AlreadySubmitted(String::from("Already submitted")).into());
+            return Err(Error::AlreadySubmitted(String::new()).into());
         }
 
         let mut milestones_map_mut = self.milestones.setter(escrow_id);
@@ -335,25 +303,25 @@ impl SecureFlow {
 
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         if msg::sender() != escrow.depositor.get() {
-            return Err(Error::Unauthorized(String::from("Not depositor")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
 
         if escrow.status.get() != EscrowStatus::InProgress as u8 {
-            return Err(Error::InvalidStatus(String::from("Invalid status")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         if milestone_index >= escrow.milestone_count.get() {
-            return Err(Error::MilestoneNotFound(String::from("Milestone not found")).into());
+            return Err(Error::MilestoneNotFound(String::new()).into());
         }
 
         let milestones_map = self.milestones.get(escrow_id);
         let milestone = milestones_map.get(milestone_index);
         if milestone.status.get() != MilestoneStatus::Submitted as u8 {
-            return Err(Error::InvalidStatus(String::from("Not submitted")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         let amount = milestone.amount.get();
@@ -413,25 +381,25 @@ impl SecureFlow {
 
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         if msg::sender() != escrow.depositor.get() {
-            return Err(Error::Unauthorized(String::from("Not depositor")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
 
         if escrow.status.get() != EscrowStatus::InProgress as u8 {
-            return Err(Error::InvalidStatus(String::from("Invalid status")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         if milestone_index >= escrow.milestone_count.get() {
-            return Err(Error::MilestoneNotFound(String::from("Milestone not found")).into());
+            return Err(Error::MilestoneNotFound(String::new()).into());
         }
 
         let milestones_map = self.milestones.get(escrow_id);
         let milestone = milestones_map.get(milestone_index);
         if milestone.status.get() != MilestoneStatus::Submitted as u8 {
-            return Err(Error::InvalidStatus(String::from("Not submitted")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         let mut milestones_map_mut = self.milestones.setter(escrow_id);
@@ -454,25 +422,25 @@ impl SecureFlow {
 
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         if msg::sender() != escrow.beneficiary.get() {
-            return Err(Error::Unauthorized(String::from("Not beneficiary")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
 
         if escrow.status.get() != EscrowStatus::InProgress as u8 {
-            return Err(Error::InvalidStatus(String::from("Invalid status")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         if milestone_index >= escrow.milestone_count.get() {
-            return Err(Error::MilestoneNotFound(String::from("Milestone not found")).into());
+            return Err(Error::MilestoneNotFound(String::new()).into());
         }
 
         let milestones_map = self.milestones.get(escrow_id);
         let milestone = milestones_map.get(milestone_index);
         if milestone.status.get() != MilestoneStatus::Rejected as u8 {
-            return Err(Error::InvalidStatus(String::from("Not rejected")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         let mut milestones_map_mut = self.milestones.setter(escrow_id);
@@ -496,22 +464,22 @@ impl SecureFlow {
 
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         if msg::sender() != escrow.depositor.get() {
-            return Err(Error::Unauthorized(String::from("Not depositor")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
 
         let milestones_map = self.milestones.get(escrow_id);
         let milestone = milestones_map.get(milestone_index);
         if milestone.status.get() != MilestoneStatus::Submitted as u8 {
-            return Err(Error::InvalidStatus(String::from("Not submitted")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         let dispute_period = self.dispute_period.get();
         if U256::from(block::timestamp()) > milestone.submitted_at.get() + dispute_period {
-            return Err(Error::DisputePeriodExpired(String::from("Dispute period expired")).into());
+            return Err(Error::DisputePeriodExpired(String::new()).into());
         }
 
         let mut milestones_map_mut = self.milestones.setter(escrow_id);
@@ -537,29 +505,29 @@ impl SecureFlow {
 
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         let sender = msg::sender();
         if sender != escrow.depositor.get() 
             && sender != escrow.beneficiary.get() 
             && !self.is_arbiter_for_escrow_internal(escrow_id, sender) {
-            return Err(Error::Unauthorized(String::from("Not authorized")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
 
         if escrow.status.get() != EscrowStatus::Disputed as u8 {
-            return Err(Error::InvalidStatus(String::from("Not in dispute")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         let milestones_map = self.milestones.get(escrow_id);
         let milestone = milestones_map.get(milestone_index);
         if milestone.status.get() != MilestoneStatus::Disputed as u8 {
-            return Err(Error::InvalidStatus(String::from("Not disputed")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         let milestone_amount = milestone.amount.get();
         if beneficiary_amount > milestone_amount {
-            return Err(Error::InvalidAmount(String::from("Invalid allocation")).into());
+            return Err(Error::InvalidAmount(String::new()).into());
         }
 
         let refund_amount = milestone_amount - beneficiary_amount;
@@ -617,33 +585,33 @@ impl SecureFlow {
 
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         if !escrow.is_open_job.get() {
-            return Err(Error::InvalidStatus(String::from("Not an open job")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         if escrow.status.get() != EscrowStatus::Pending as u8 {
-            return Err(Error::InvalidStatus(String::from("Job closed")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         if self.has_applied.get(escrow_id).get(msg::sender()) {
-            return Err(Error::AlreadySubmitted(String::from("Already applied")).into());
+            return Err(Error::AlreadySubmitted(String::new()).into());
         }
 
         let max_apps = self.max_applications.get();
         let mut applications = self.escrow_applications.setter(escrow_id);
         if U256::from(applications.len()) >= max_apps {
-            return Err(Error::TooManyMilestones(String::from("Too many applications")).into());
+            return Err(Error::TooManyMilestones(String::new()).into());
         }
 
         if msg::sender() == escrow.depositor.get() {
-            return Err(Error::Unauthorized(String::from("Cannot apply to own job")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
 
         if cover_letter.is_empty() {
-            return Err(Error::InvalidAmount(String::from("Cover letter required")).into());
+            return Err(Error::InvalidAmount(String::new()).into());
         }
 
           // Create application using grow() to get a mutable accessor
@@ -663,23 +631,23 @@ impl SecureFlow {
 
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         if msg::sender() != escrow.depositor.get() {
-            return Err(Error::Unauthorized(String::from("Not depositor")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
 
         if !escrow.is_open_job.get() {
-            return Err(Error::InvalidStatus(String::from("Not open job")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         if escrow.status.get() != EscrowStatus::Pending as u8 {
-            return Err(Error::InvalidStatus(String::from("Job closed")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         if !self.has_applied.get(escrow_id).get(freelancer) {
-            return Err(Error::InvalidEscrow(String::from("Freelancer not applied")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         let mut escrow_mut = self.escrows.setter(escrow_id);
@@ -698,30 +666,30 @@ impl SecureFlow {
 
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         if msg::sender() != escrow.depositor.get() {
-            return Err(Error::Unauthorized(String::from("Not depositor")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
 
         if escrow.status.get() != EscrowStatus::Pending as u8 {
-            return Err(Error::InvalidStatus(String::from("Invalid status")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         if escrow.work_started.get() {
-            return Err(Error::WorkNotStarted(String::from("Work started")).into());
+            return Err(Error::WorkNotStarted(String::new()).into());
         }
 
         if U256::from(block::timestamp()) >= escrow.deadline.get() {
-            return Err(Error::DeadlineNotPassed(String::from("Deadline passed")).into());
+            return Err(Error::DeadlineNotPassed(String::new()).into());
         }
 
         let refund_amount = escrow.total_amount.get() - escrow.paid_amount.get();
         let token = escrow.token.get();
         let depositor = escrow.depositor.get();
         if refund_amount == U256::ZERO {
-            return Err(Error::NothingToRefund(String::from("Nothing to refund")).into());
+            return Err(Error::NothingToRefund(String::new()).into());
         }
 
         let mut escrow_mut = self.escrows.setter(escrow_id);
@@ -740,28 +708,28 @@ impl SecureFlow {
 
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         if msg::sender() != escrow.depositor.get() {
-            return Err(Error::Unauthorized(String::from("Not depositor")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
 
         let emergency_delay = self.emergency_refund_delay.get();
         if U256::from(block::timestamp()) <= escrow.deadline.get() + emergency_delay {
-            return Err(Error::EmergencyPeriodNotReached(String::from("Emergency period not reached")).into());
+            return Err(Error::EmergencyPeriodNotReached(String::new()).into());
         }
 
         let status = escrow.status.get();
         if status == EscrowStatus::Released as u8 || status == EscrowStatus::Refunded as u8 {
-            return Err(Error::InvalidStatus(String::from("Cannot refund")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         let refund_amount = escrow.total_amount.get() - escrow.paid_amount.get();
         let token = escrow.token.get();
         let depositor = escrow.depositor.get();
         if refund_amount == U256::ZERO {
-            return Err(Error::NothingToRefund(String::from("Nothing to refund")).into());
+            return Err(Error::NothingToRefund(String::new()).into());
         }
 
         let mut escrow_mut = self.escrows.setter(escrow_id);
@@ -780,20 +748,20 @@ impl SecureFlow {
 
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
 
         if msg::sender() != escrow.depositor.get() {
-            return Err(Error::Unauthorized(String::from("Not depositor")).into());
+            return Err(Error::Unauthorized(String::new()).into());
         }
 
         if extra_seconds == U256::ZERO || extra_seconds > U256::from(2592000) {
-            return Err(Error::InvalidDuration(String::from("Invalid extension")).into());
+            return Err(Error::InvalidDuration(String::new()).into());
         }
 
         let status = escrow.status.get();
         if status != EscrowStatus::InProgress as u8 && status != EscrowStatus::Pending as u8 {
-            return Err(Error::InvalidStatus(String::from("Cannot extend")).into());
+            return Err(Error::InvalidStatus(String::new()).into());
         }
 
         let escrow = self.escrows.get(escrow_id);
@@ -805,28 +773,11 @@ impl SecureFlow {
     }
 
     // ===== Admin Functions =====
-    pub fn set_platform_fee_bp(&mut self, bp: U256) -> Result<(), Vec<u8>> {
-        self.only_owner()?;
-        if bp > self.max_platform_fee_bp.get() {
-            return Err(Error::InvalidAmount(String::from("Fee too high")).into());
-        }
-        self.platform_fee_bp.set(bp);
-        Ok(())
-    }
-
-    pub fn set_fee_collector(&mut self, collector: Address) -> Result<(), Vec<u8>> {
-        self.only_owner()?;
-        if collector == Address::ZERO {
-            return Err(Error::InvalidAmount(String::from("Invalid collector")).into());
-        }
-        self.fee_collector.set(collector);
-        Ok(())
-    }
 
     pub fn whitelist_token(&mut self, token: Address) -> Result<(), Vec<u8>> {
         self.only_owner()?;
         if token == Address::ZERO {
-            return Err(Error::InvalidAmount(String::from("Invalid token")).into());
+            return Err(Error::InvalidAmount(String::new()).into());
         }
         self.whitelisted_tokens.setter(token).set(true);
         Ok(())
@@ -841,7 +792,7 @@ impl SecureFlow {
     pub fn authorize_arbiter(&mut self, arbiter: Address) -> Result<(), Vec<u8>> {
         self.only_owner()?;
         if arbiter == Address::ZERO {
-            return Err(Error::InvalidAmount(String::from("Invalid arbiter")).into());
+            return Err(Error::InvalidAmount(String::new()).into());
         }
         self.authorized_arbiters.setter(arbiter).set(true);
         Ok(())
@@ -877,55 +828,6 @@ impl SecureFlow {
         Ok(())
     }
 
-    pub fn withdraw_fees(&mut self, token: Address) -> Result<(), Vec<u8>> {
-        let sender = msg::sender();
-        let fee_collector = self.fee_collector.get();
-        let owner = self.owner.get();
-        
-        if sender != fee_collector && sender != owner {
-            return Err(Error::Unauthorized(String::from("Not authorized")).into());
-        }
-
-        let amount = self.total_fees_by_token.get(token);
-        if amount == U256::ZERO {
-            return Err(Error::NothingToRefund(String::from("No fees")).into());
-        }
-
-        self.total_fees_by_token.setter(token).set(U256::ZERO);
-
-        let recipient = if sender == owner { owner } else { fee_collector };
-        self.transfer_out(token, recipient, amount)?;
-
-        Ok(())
-    }
-
-    pub fn emergency_withdraw(&mut self, token: Address, amount: U256) -> Result<(), Vec<u8>> {
-        self.only_owner()?;
-        
-        if amount == U256::ZERO {
-            return Err(Error::InvalidAmount(String::from("Invalid amount")).into());
-        }
-
-        if token == Address::ZERO {
-            // Native token
-            let balance = contract::balance();
-            let reserved = self.escrowed_amount.get(Address::ZERO) + self.total_fees_by_token.get(Address::ZERO);
-            if balance <= reserved {
-                return Err(Error::NothingToRefund(String::from("Nothing withdrawable")).into());
-            }
-            let available = balance - reserved;
-            if amount > available {
-                return Err(Error::InvalidAmount(String::from("Amount exceeds available")).into());
-            }
-            call::transfer_eth(self.owner.get(), amount)?;
-        } else {
-            // ERC20 token - simplified version
-            let reserved = self.escrowed_amount.get(token) + self.total_fees_by_token.get(token);
-            self.transfer_out(token, self.owner.get(), amount)?;
-        }
-
-        Ok(())
-    }
 
     // ===== View Functions =====
     pub fn next_escrow_id(&self) -> Result<U256, Vec<u8>> {
@@ -940,13 +842,6 @@ impl SecureFlow {
         Ok(self.paused.get())
     }
 
-    pub fn platform_fee_bp(&self) -> Result<U256, Vec<u8>> {
-        Ok(self.platform_fee_bp.get())
-    }
-
-    pub fn fee_collector(&self) -> Result<Address, Vec<u8>> {
-        Ok(self.fee_collector.get())
-    }
 
     pub fn job_creation_paused(&self) -> Result<bool, Vec<u8>> {
         Ok(self.job_creation_paused.get())
@@ -972,9 +867,6 @@ impl SecureFlow {
         Ok(self.escrowed_amount.get(token))
     }
 
-    pub fn total_fees_by_token(&self, token: Address) -> Result<U256, Vec<u8>> {
-        Ok(self.total_fees_by_token.get(token))
-    }
 
     pub fn has_applied(&self, escrow_id: U256, user: Address) -> Result<bool, Vec<u8>> {
         Ok(self.has_applied.get(escrow_id).get(user))
@@ -987,11 +879,9 @@ impl SecureFlow {
     pub fn get_escrow_summary(&self, escrow_id: U256) -> Result<(Address, Address, Vec<Address>, U256, U256, U256, U256, Address, U256, bool, U256, U256, bool, String, String), Vec<u8>> {
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
-
         let remaining = escrow.total_amount.get() - escrow.paid_amount.get();
-        // Collect arbiters
         let arbiters_vec = &escrow.arbiters;
         let mut arbiters_list = Vec::new();
         let mut i = 0;
@@ -1003,34 +893,27 @@ impl SecureFlow {
                 break;
             }
         }
-        
         Ok((
-            escrow.depositor.get(),                    // Address
-            escrow.beneficiary.get(),                  // Address
-            arbiters_list,                             // Vec<Address>
-            U256::from(escrow.status.get()),           // U256 (EscrowStatus)
-            escrow.total_amount.get(),                 // U256
-            escrow.paid_amount.get(),                  // U256
-            remaining,                                 // U256
-            escrow.token.get(),                        // Address
-            escrow.deadline.get(),                     // U256
-            escrow.work_started.get(),                 // bool
-            escrow.created_at.get(),                    // U256
-            escrow.milestone_count.get(),               // U256
-            escrow.is_open_job.get(),                  // bool
-            escrow.project_title.get_string(),          // String
-            escrow.project_description.get_string(),    // String
+            escrow.depositor.get(),
+            escrow.beneficiary.get(),
+            arbiters_list,
+            U256::from(escrow.status.get()),
+            escrow.total_amount.get(),
+            escrow.paid_amount.get(),
+            remaining,
+            escrow.token.get(),
+            escrow.deadline.get(),
+            escrow.work_started.get(),
+            escrow.created_at.get(),
+            escrow.milestone_count.get(),
+            escrow.is_open_job.get(),
+            escrow.project_title.get_string(),
+            escrow.project_description.get_string(),
         ))
     }
 
-    pub fn get_milestones(&self, escrow_id: U256) -> Result<Vec<u8>, Vec<u8>> {
-        let escrow = self.escrows.get(escrow_id);
-        if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
-        }
-
-        // Return empty vec for now - milestone serialization would need custom encoding
-        // In production, you'd encode the milestones properly
+    pub fn get_milestones(&self, _escrow_id: U256) -> Result<Vec<u8>, Vec<u8>> {
+        // Return empty vec - milestone serialization would need custom encoding
         Ok(Vec::new())
     }
 
@@ -1051,35 +934,18 @@ impl SecureFlow {
 
     pub fn get_applications_page(
         &self,
-        escrow_id: U256,
-        offset: U256,
-        limit: U256,
+        _escrow_id: U256,
+        _offset: U256,
+        _limit: U256,
     ) -> Result<Vec<u8>, Vec<u8>> {
-        let escrow = self.escrows.get(escrow_id);
-        if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
-        }
-
-        if limit == U256::ZERO || limit > self.max_applications.get() {
-            return Err(Error::InvalidAmount(String::from("Invalid limit")).into());
-        }
-
-        let applications = self.escrow_applications.get(escrow_id);
-        let offset_usize = offset.as_limbs()[0] as usize;
-        let limit_usize = limit.as_limbs()[0] as usize;
-        if offset_usize > applications.len() {
-            return Err(Error::InvalidAmount(String::from("Offset out of bounds")).into());
-        }
-
-        // Return empty vec for now - Application serialization would need custom encoding
-        // In production, you'd encode the applications properly
+        // Return empty vec - Application serialization would need custom encoding
         Ok(Vec::new())
     }
 
     pub fn get_application_count(&self, escrow_id: U256) -> Result<U256, Vec<u8>> {
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
         Ok(U256::from(self.escrow_applications.get(escrow_id).len()))
     }
@@ -1087,7 +953,7 @@ impl SecureFlow {
     pub fn has_user_applied(&self, escrow_id: U256, user: Address) -> Result<bool, Vec<u8>> {
         let escrow = self.escrows.get(escrow_id);
         if escrow.depositor.get() == Address::ZERO {
-            return Err(Error::InvalidEscrow(String::from("Invalid escrow")).into());
+            return Err(Error::InvalidEscrow(String::new()).into());
         }
         Ok(self.has_applied.get(escrow_id).get(user))
     }
@@ -1100,7 +966,4 @@ impl SecureFlow {
         Ok(self.completed_escrows.get(user))
     }
 
-    pub fn get_withdrawable_fees(&self, token: Address) -> Result<U256, Vec<u8>> {
-        Ok(self.total_fees_by_token.get(token))
-    }
 }

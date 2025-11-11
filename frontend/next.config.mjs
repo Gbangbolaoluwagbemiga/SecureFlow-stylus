@@ -9,6 +9,11 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-}
+  // Suppress font preload warnings from third-party libraries
+  onDemandEntries: {
+    maxInactiveAge: 25 * 1000,
+    pagesBufferLength: 2,
+  },
+};
 
-export default nextConfig
+export default nextConfig;

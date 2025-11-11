@@ -57,7 +57,6 @@ sol_storage! {
         address token;
         uint256 total_amount;
         uint256 paid_amount;
-        uint256 platform_fee;
         uint256 deadline;
         uint8 status;
         bool work_started;

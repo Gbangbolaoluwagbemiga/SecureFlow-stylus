@@ -4,7 +4,6 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use stylus_sdk::{
-    prelude::*,
     call::{self, Call},
     contract,
 };
