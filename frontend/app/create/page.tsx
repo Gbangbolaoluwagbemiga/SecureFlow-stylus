@@ -493,9 +493,35 @@ export default function CreateEscrowPage() {
         (m) => m.description
       );
 
-      const beneficiaryAddress = formData.isOpenJob
-        ? "0x0000000000000000000000000000000000000000" // Zero address for open jobs
-        : formData.beneficiary || "0x0000000000000000000000000000000000000000";
+      // For open jobs, use zero address. For regular escrows, require a beneficiary
+      let beneficiaryAddress: string;
+      if (formData.isOpenJob) {
+        beneficiaryAddress = "0x0000000000000000000000000000000000000000"; // Zero address for open jobs
+      } else {
+        if (
+          !formData.beneficiary ||
+          formData.beneficiary === "0x0000000000000000000000000000000000000000"
+        ) {
+          throw new Error(
+            "Beneficiary address is required for non-open job escrows"
+          );
+        }
+        // Ensure beneficiary is not the same as the depositor (wallet address)
+        if (
+          formData.beneficiary.toLowerCase() === wallet.address?.toLowerCase()
+        ) {
+          throw new Error(
+            "Beneficiary cannot be the same as the depositor (your wallet address)"
+          );
+        }
+        beneficiaryAddress = formData.beneficiary;
+      }
+
+      console.log("👤 Beneficiary address:", {
+        isOpenJob: formData.isOpenJob,
+        beneficiary: beneficiaryAddress,
+        depositor: wallet.address,
+      });
 
       let txHash;
 
@@ -509,30 +535,72 @@ export default function CreateEscrowPage() {
         try {
           const balance = await window.ethereum.request({
             method: "eth_getBalance",
-            params: [wallet.address],
+            params: [wallet.address, "latest"],
           });
 
           const balanceInWei = BigInt(balance);
           const requiredAmount = BigInt(totalAmountInWei);
 
-          if (balanceInWei < requiredAmount) {
+          // Also need some ETH for gas
+          const gasReserve = BigInt("100000000000000000"); // 0.1 ETH for gas
+          const totalNeeded = requiredAmount + gasReserve;
+
+          if (balanceInWei < totalNeeded) {
+            const { ethers } = await import("ethers");
             throw new Error(
-              `Insufficient MON balance. You have ${(
-                Number(balanceInWei) /
-                10 ** 18
-              ).toFixed(4)} MON but need ${formData.totalBudget} MON.`
+              `Insufficient ETH balance. You have ${ethers.formatEther(
+                balanceInWei
+              )} ETH but need ${ethers.formatEther(
+                requiredAmount
+              )} ETH for escrow + ~0.1 ETH for gas.`
             );
           }
-        } catch (balanceError) {
+
+          if (balanceInWei < requiredAmount) {
+            const { ethers } = await import("ethers");
+            throw new Error(
+              `Insufficient ETH balance. You have ${ethers.formatEther(
+                balanceInWei
+              )} ETH but need ${ethers.formatEther(requiredAmount)} ETH.`
+            );
+          }
+        } catch (balanceError: any) {
+          if (balanceError.message?.includes("Insufficient")) {
+            throw balanceError;
+          }
           throw new Error(
-            "Failed to check MON balance. Please ensure you have enough MON tokens."
+            `Failed to check ETH balance: ${
+              balanceError.message || "Unknown error"
+            }. Please ensure you have enough ETH.`
           );
         }
 
         // Convert milestone amounts to wei (BigInt)
-        const milestoneAmountsInWei = formData.milestones.map((m) =>
-          BigInt(Math.floor(Number.parseFloat(m.amount) * 10 ** 18)).toString()
+        const milestoneAmountsInWei = formData.milestones.map((m) => {
+          const amount = Number.parseFloat(m.amount);
+          if (isNaN(amount) || amount <= 0) {
+            throw new Error(`Invalid milestone amount: ${m.amount}`);
+          }
+          return BigInt(Math.floor(amount * 10 ** 18)).toString();
+        });
+
+        // Calculate total from milestones to verify it matches budget
+        const totalFromMilestones = milestoneAmountsInWei.reduce(
+          (sum, amt) => sum + BigInt(amt),
+          BigInt(0)
         );
+        const totalBudgetInWei = BigInt(totalAmountInWei);
+
+        if (totalFromMilestones !== totalBudgetInWei) {
+          const { ethers } = await import("ethers");
+          throw new Error(
+            `Total milestone amounts (${ethers.formatEther(
+              totalFromMilestones
+            )} ETH) do not match project budget (${ethers.formatEther(
+              totalBudgetInWei
+            )} ETH). Please ensure they match exactly.`
+          );
+        }
 
         // Check if arbiter is authorized before using
         const defaultArbiter = "0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41";
@@ -545,6 +613,11 @@ export default function CreateEscrowPage() {
             "authorizedArbiters",
             defaultArbiter
           );
+          console.log("🔍 Arbiter authorization check:", {
+            arbiter: defaultArbiter,
+            isAuthorized: isArbiterAuthorized,
+          });
+
           if (!isArbiterAuthorized) {
             throw new Error(
               "Default arbiter is not authorized. Please go to the Admin page and authorize an arbiter first, or create an open job (which doesn't require arbiters initially)."
@@ -560,6 +633,26 @@ export default function CreateEscrowPage() {
 
         // Convert duration from days to seconds
         const durationInSeconds = Number(formData.duration) * 24 * 60 * 60;
+
+        // Validate duration (contract requires 1 hour to 365 days)
+        if (durationInSeconds < 3600 || durationInSeconds > 31536000) {
+          throw new Error(
+            "Invalid duration. Duration must be between 1 hour and 365 days."
+          );
+        }
+
+        // Log transaction parameters for debugging
+        const { ethers: ethersLib } = await import("ethers");
+        console.log("📝 Escrow creation parameters:", {
+          beneficiary: beneficiaryAddress,
+          arbiters,
+          requiredConfirmations,
+          milestoneAmounts: milestoneAmountsInWei,
+          milestoneDescriptions: milestoneDescriptions.length,
+          duration: durationInSeconds,
+          totalAmount: ethersLib.formatEther(totalAmountInWei),
+          isOpenJob: formData.isOpenJob,
+        });
 
         // Retry transaction with exponential backoff
         let txAttempts = 0;
@@ -598,17 +691,45 @@ export default function CreateEscrowPage() {
               // Use regular transaction - convert wei to hex string for value
               const valueInHex = `0x${BigInt(totalAmountInWei).toString(16)}`;
 
-              txHash = await escrowContract.send(
-                "createEscrowNative",
-                valueInHex, // msg.value in hex (native ETH amount)
+              const { ethers: ethersLib } = await import("ethers");
+              console.log("🚀 Sending createEscrowNative transaction:", {
+                value: valueInHex,
+                valueInEth: ethersLib.formatEther(totalAmountInWei),
+                beneficiary: beneficiaryAddress,
+                arbiters,
+                requiredConfirmations,
+                milestoneCount: milestoneAmountsInWei.length,
+                duration: durationInSeconds,
+              });
+
+              // Ensure all parameters are in the correct format
+              const params = [
                 beneficiaryAddress, // beneficiary parameter
                 arbiters, // arbiters parameter
-                requiredConfirmations, // requiredConfirmations parameter
-                milestoneAmountsInWei, // milestoneAmounts parameter (in wei)
-                milestoneDescriptions, // milestoneDescriptions parameter
-                durationInSeconds, // duration parameter (in seconds)
-                formData.projectTitle, // projectTitle parameter
-                formData.projectDescription // projectDescription parameter
+                requiredConfirmations, // requiredConfirmations parameter (uint8)
+                milestoneAmountsInWei, // milestoneAmounts parameter (uint256[])
+                milestoneDescriptions, // milestoneDescriptions parameter (string[])
+                durationInSeconds, // duration parameter (uint256)
+                formData.projectTitle, // projectTitle parameter (string)
+                formData.projectDescription, // projectDescription parameter (string)
+              ];
+
+              console.log("📤 Calling createEscrowNative with params:", {
+                value: valueInHex,
+                beneficiary: params[0],
+                arbiters: params[1],
+                requiredConfirmations: params[2],
+                milestoneAmounts: params[3],
+                milestoneDescriptions: params[4],
+                duration: params[5],
+                title: params[6],
+                description: params[7],
+              });
+
+              txHash = await escrowContract.send(
+                "createEscrowNative",
+                valueInHex, // msg.value in hex (native ETH amount) - this is the FIRST parameter to send()
+                ...params // Spread the rest of the parameters
               );
 
               toast({
@@ -622,42 +743,92 @@ export default function CreateEscrowPage() {
 
             if (txAttempts >= maxTxAttempts) {
               // Provide better error message
-              const errorMessage = txError.message || "Unknown error";
-              if (errorMessage.includes("execution reverted")) {
+              const errorMessage =
+                txError.message || String(txError) || "Unknown error";
+              console.error("❌ Final transaction error:", {
+                message: errorMessage,
+                error: txError,
+                beneficiary: beneficiaryAddress,
+                isOpenJob: formData.isOpenJob,
+                totalAmount: totalAmountInWei,
+                arbiters,
+              });
+
+              if (
+                errorMessage.includes("execution reverted") ||
+                errorMessage.includes("revert")
+              ) {
                 // Check common revert reasons
                 let specificError =
                   "Transaction failed. The contract reverted.";
 
                 if (
                   errorMessage.includes("ArbiterNotAuthorized") ||
-                  errorMessage.includes("arbiter")
+                  errorMessage.includes("arbiter") ||
+                  errorMessage.includes("ARBITER")
                 ) {
                   specificError =
-                    "Arbiter is not authorized. Please go to Admin page and authorize an arbiter first.";
+                    "❌ Arbiter is not authorized. Please go to Admin page and authorize an arbiter first.";
                 } else if (
                   errorMessage.includes("TokenNotWhitelisted") ||
-                  errorMessage.includes("token")
+                  errorMessage.includes("token") ||
+                  errorMessage.includes("TOKEN")
                 ) {
                   specificError =
-                    "Token is not whitelisted. Please whitelist the token from the Admin page.";
-                } else if (errorMessage.includes("paused")) {
+                    "❌ Token is not whitelisted. Please whitelist the token from the Admin page.";
+                } else if (
+                  errorMessage.includes("paused") ||
+                  errorMessage.includes("PAUSED")
+                ) {
                   specificError =
-                    "Contract is paused. Please unpause from Admin page.";
+                    "❌ Contract is paused. Please unpause from Admin page.";
                 } else if (
                   errorMessage.includes("InvalidAmount") ||
-                  errorMessage.includes("amount")
+                  errorMessage.includes("amount") ||
+                  errorMessage.includes("AMOUNT")
                 ) {
                   specificError =
-                    "Invalid amount. Check: 1) Total milestone amounts match project budget, 2) Amounts are greater than 0, 3) You sent the correct ETH value.";
-                } else if (errorMessage.includes("InvalidDuration")) {
+                    "❌ Invalid amount. The contract checks: 1) Total milestone amounts must exactly match project budget, 2) Amounts must be greater than 0, 3) msg.value must exactly match total milestone amounts. Check console logs for exact values.";
+                } else if (
+                  errorMessage.includes("InvalidDuration") ||
+                  errorMessage.includes("duration") ||
+                  errorMessage.includes("DURATION")
+                ) {
                   specificError =
-                    "Invalid duration. Duration must be between 1 hour and 365 days.";
+                    "❌ Invalid duration. Duration must be between 1 hour (3600 seconds) and 365 days (31536000 seconds).";
+                } else if (
+                  errorMessage.includes("beneficiary") ||
+                  errorMessage.includes("depositor") ||
+                  (beneficiaryAddress &&
+                    beneficiaryAddress.toLowerCase() ===
+                      wallet.address?.toLowerCase())
+                ) {
+                  specificError =
+                    "❌ Beneficiary cannot be the same as depositor. For open jobs, use the 'Open Job' checkbox. For regular escrows, use a different beneficiary address.";
+                } else if (
+                  errorMessage.includes("TooManyArbiters") ||
+                  errorMessage.includes("arbiters")
+                ) {
+                  specificError =
+                    "❌ Invalid arbiters. Check: 1) At least one arbiter is provided, 2) All arbiters are authorized, 3) Required confirmations is valid.";
                 }
 
                 throw new Error(
-                  `${specificError} Common checks: 1) Contract is not paused, 2) Arbiter is authorized, 3) Token is whitelisted (if using ERC20), 4) You have sufficient balance, 5) All parameters are valid.`
+                  `${specificError}\n\nDebug: Check browser console for parameter logs. Common issues:\n1. Contract paused? Check Admin page\n2. Arbiter authorized? Check Admin → Arbiter Management\n3. Amounts match? Total milestones must = project budget exactly\n4. Beneficiary valid? Cannot be your wallet for non-open jobs`
                 );
               }
+
+              // If it's an encoding error
+              if (
+                errorMessage.includes("encode") ||
+                errorMessage.includes("ABI") ||
+                errorMessage.includes("data")
+              ) {
+                throw new Error(
+                  `Transaction encoding failed: ${errorMessage}\n\nThis usually means there's a parameter type mismatch. Check console logs for exact parameters.`
+                );
+              }
+
               throw txError;
             }
 

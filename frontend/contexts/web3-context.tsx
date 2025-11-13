@@ -472,8 +472,27 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     try {
       const iface = new ethers.Interface(abi);
       const encodedData = iface.encodeFunctionData(method, args);
+
+      // Log encoding for debugging
+      if (method === "createEscrowNative" || method === "createEscrow") {
+        console.log("🔧 Encoding function:", method, {
+          args: args.map((arg, i) => ({
+            index: i,
+            type: typeof arg,
+            value: Array.isArray(arg)
+              ? `Array[${arg.length}]`
+              : String(arg).slice(0, 50),
+          })),
+          encodedData: encodedData.slice(0, 10) + "...",
+        });
+      }
+
       return encodedData;
-    } catch (error) {
+    } catch (error: any) {
+      console.error(`❌ Failed to encode function ${method}:`, error);
+      console.error("Arguments:", args);
+      console.error("ABI:", abi);
+
       if (method === "approve") {
         return (
           "0x095ea7b3" +
@@ -482,7 +501,9 @@ export function Web3Provider({ children }: { children: ReactNode }) {
           )
         );
       }
-      return "0x";
+
+      // Don't return "0x" - throw the error so we can see what's wrong
+      throw new Error(`Failed to encode ${method}: ${error.message}`);
     }
   };
 
