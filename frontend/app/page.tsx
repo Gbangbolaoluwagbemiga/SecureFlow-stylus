@@ -33,8 +33,24 @@ export default function HomePage() {
       const contract = getContract(CONTRACTS.SECUREFLOW_ESCROW, SECUREFLOW_ABI);
 
       // Get total number of escrows
-      const totalEscrows = await contract.call("nextEscrowId");
-      const escrowCount = Number(totalEscrows);
+      let totalEscrows;
+      try {
+        totalEscrows = await contract.call("nextEscrowId");
+      } catch (error: any) {
+        // Contract might not be initialized or there's an issue
+        console.warn(
+          "Failed to get nextEscrowId, contract may not be initialized:",
+          error
+        );
+        setStats({
+          activeEscrows: 0,
+          totalVolume: "0",
+          completedEscrows: 0,
+        });
+        setLoading(false);
+        return;
+      }
+      const escrowCount = Number(totalEscrows || 0);
 
       let activeEscrows = 0;
       let completedEscrows = 0;

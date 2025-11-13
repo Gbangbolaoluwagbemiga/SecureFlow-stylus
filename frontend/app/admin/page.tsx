@@ -82,7 +82,17 @@ export default function AdminPage() {
       const platformFeeBP = 0; // Default to 0% (no fee)
 
       // Fetch total escrows count
-      const totalEscrows = await contract.call("nextEscrowId");
+      let totalEscrows;
+      try {
+        totalEscrows = await contract.call("nextEscrowId");
+      } catch (error: any) {
+        // Contract might not be initialized
+        console.warn(
+          "Failed to get nextEscrowId, contract may not be initialized:",
+          error
+        );
+        totalEscrows = 0;
+      }
 
       // Set actual contract stats
       setContractStats({

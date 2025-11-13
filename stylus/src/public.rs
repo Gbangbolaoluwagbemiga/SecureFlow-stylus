@@ -45,7 +45,9 @@ impl SecureFlow {
             return Err(Error::TokenNotWhitelisted(String::new()).into());
         }
 
-        if arbiters.is_empty() || arbiters.len() > self.max_arbiters.get().as_limbs()[0] as usize {
+        let max_arbiters = self.max_arbiters.get();
+        let max_arbiters_count = if max_arbiters == U256::ZERO { 5usize } else { max_arbiters.as_limbs()[0] as usize };
+        if arbiters.is_empty() || arbiters.len() > max_arbiters_count {
             return Err(Error::TooManyArbiters(String::new()).into());
         }
 
@@ -74,6 +76,7 @@ impl SecureFlow {
         )
     }
 
+    #[payable]
     pub fn create_escrow_native(
         &mut self,
         beneficiary: Address,
@@ -88,7 +91,9 @@ impl SecureFlow {
         self.when_not_paused()?;
         self.when_job_creation_not_paused()?;
 
-        if arbiters.is_empty() || arbiters.len() > self.max_arbiters.get().as_limbs()[0] as usize {
+        let max_arbiters = self.max_arbiters.get();
+        let max_arbiters_count = if max_arbiters == U256::ZERO { 5usize } else { max_arbiters.as_limbs()[0] as usize };
+        if arbiters.is_empty() || arbiters.len() > max_arbiters_count {
             return Err(Error::TooManyArbiters(String::new()).into());
         }
 
@@ -131,40 +136,54 @@ impl SecureFlow {
         project_description: String,
         is_native: bool,
     ) -> Result<U256, Vec<u8>> {
-        if beneficiary == depositor {
-            return Err(Error::InvalidAmount(String::new()).into());
+        // Check if it's an open job (beneficiary is zero address)
+        let is_open_job = beneficiary == Address::ZERO;
+        
+        // Only check beneficiary != depositor for non-open jobs
+        // For open jobs, beneficiary is zero address which is allowed
+        if !is_open_job && beneficiary == depositor {
+            return Err(Error::BeneficiaryEqualsDepositor(String::new()).into());
         }
 
         let min_duration = self.min_duration.get();
         let max_duration = self.max_duration.get();
-        if duration < min_duration || duration > max_duration {
+        // Defensive check: if constants are zero (uninitialized), use defaults
+        let min_dur = if min_duration == U256::ZERO { U256::from(3600) } else { min_duration };
+        let max_dur = if max_duration == U256::ZERO { U256::from(31536000) } else { max_duration };
+        if duration < min_dur || duration > max_dur {
             return Err(Error::InvalidDuration(String::new()).into());
         }
 
-        if milestone_amounts.is_empty() || milestone_amounts.len() > self.max_milestones.get().as_limbs()[0] as usize {
+        let max_milestones = self.max_milestones.get();
+        let max_milestones_count = if max_milestones == U256::ZERO { 20usize } else { max_milestones.as_limbs()[0] as usize };
+        if milestone_amounts.is_empty() {
+            return Err(Error::EmptyMilestones(String::new()).into());
+        }
+        if milestone_amounts.len() > max_milestones_count {
             return Err(Error::TooManyMilestones(String::new()).into());
         }
 
         if milestone_amounts.len() != milestone_descriptions.len() {
-            return Err(Error::InvalidAmount(String::new()).into());
+            return Err(Error::MilestoneCountMismatch(String::new()).into());
         }
 
         if project_title.is_empty() {
-            return Err(Error::InvalidAmount(String::new()).into());
+            return Err(Error::EmptyProjectTitle(String::new()).into());
         }
 
-        let is_open_job = beneficiary == Address::ZERO;
+        // is_open_job already determined above
         let mut total_amount = U256::ZERO;
         for amount in &milestone_amounts {
             if *amount == U256::ZERO {
-                return Err(Error::InvalidAmount(String::new()).into());
+                return Err(Error::ZeroMilestoneAmount(String::new()).into());
             }
             total_amount += *amount;
         }
 
         if is_native {
-            if msg::value() != total_amount {
-                return Err(Error::InvalidAmount(String::new()).into());
+            let sent_value = msg::value();
+            if sent_value != total_amount {
+                return Err(Error::ValueMismatch(String::new()).into());
             }
             let current = self.escrowed_amount.get(Address::ZERO);
             self.escrowed_amount.setter(Address::ZERO).set(current + total_amount);
@@ -181,12 +200,11 @@ impl SecureFlow {
         let mut escrow = self.escrows.setter(escrow_id);
         escrow.depositor.set(depositor);
         escrow.beneficiary.set(beneficiary);
-        // Set arbiters - clear existing and push new ones
-        // Note: We need to handle arbiters differently due to borrow checker
-        // For now, we'll push them one by one
+        // Set arbiters - for new escrows, vector should be empty
+        // Just push the arbiters directly
         let arbiters_vec = &mut escrow.arbiters;
-        // Clear existing arbiters by setting length to 0
-        unsafe { arbiters_vec.set_len(0) };
+        // For new escrows, the vector is empty, so we can just push
+        // If somehow it's not empty, we'll append (shouldn't happen for new escrows)
         for arbiter in arbiters {
             arbiters_vec.push(arbiter);
         }
@@ -202,12 +220,15 @@ impl SecureFlow {
         escrow.is_open_job.set(is_open_job);
         escrow.project_title.0.set_bytes(project_title.as_bytes());
         escrow.project_description.0.set_bytes(project_description.as_bytes());
+        drop(escrow); // Drop escrow reference before accessing milestones
 
         // Create milestones
-        for (i, (amount, description)) in milestone_amounts.iter().zip(milestone_descriptions.iter()).enumerate() {
-            let mut milestones_map = self.milestones.setter(escrow_id);
+        let mut milestones_map = self.milestones.setter(escrow_id);
+        for i in 0..milestone_amounts.len() {
+            let amount = milestone_amounts[i];
+            let description = &milestone_descriptions[i];
             let mut milestone = milestones_map.setter(U256::from(i));
-            milestone.amount.set(*amount);
+            milestone.amount.set(amount);
             milestone.description.0.set_bytes(description.as_bytes());
             milestone.status.set(U8::from(MilestoneStatus::NotStarted as u8));
             milestone.submitted_at.set(U256::ZERO);
@@ -216,6 +237,7 @@ impl SecureFlow {
             milestone.disputed_by.set(Address::ZERO);
             milestone.dispute_reason.0.set_bytes(&[]);
         }
+        drop(milestones_map);
 
         // Add to user escrows
         let mut user_escrows = self.user_escrows.setter(depositor);
@@ -897,7 +919,7 @@ impl SecureFlow {
             escrow.depositor.get(),
             escrow.beneficiary.get(),
             arbiters_list,
-            U256::from(escrow.status.get()),
+            U256::from(escrow.status.get()), // Return as U256 (Stylus doesn't support U8 in return tuples)
             escrow.total_amount.get(),
             escrow.paid_amount.get(),
             remaining,

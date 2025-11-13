@@ -84,13 +84,13 @@ export default function FreelancerPage() {
   const [escrows, setEscrows] = useState<Escrow[]>([]);
   const [loading, setLoading] = useState(false);
   const [submittingMilestone, setSubmittingMilestone] = useState<string | null>(
-    null,
+    null
   );
   const [submittedMilestones, setSubmittedMilestones] = useState<Set<string>>(
-    new Set(),
+    new Set()
   );
   const [approvedMilestones, setApprovedMilestones] = useState<Set<string>>(
-    new Set(),
+    new Set()
   );
   const [selectedEscrowId, setSelectedEscrowId] = useState<string | null>(null);
   const [selectedMilestoneIndex, setSelectedMilestoneIndex] = useState<
@@ -137,7 +137,7 @@ export default function FreelancerPage() {
     return () => {
       window.removeEventListener(
         "milestoneSubmitted",
-        handleMilestoneSubmitted,
+        handleMilestoneSubmitted
       );
       window.removeEventListener("milestoneApproved", handleMilestoneApproved);
       window.removeEventListener("milestoneRejected", handleMilestoneRejected);
@@ -212,7 +212,7 @@ export default function FreelancerPage() {
                   const individualMilestone = await contract.call(
                     "milestones",
                     i,
-                    j,
+                    j
                   );
 
                   allMilestones.push(individualMilestone);
@@ -400,11 +400,11 @@ export default function FreelancerPage() {
                     const milestoneKey = `${i}-${index}`;
                     if (finalStatus === "approved") {
                       setApprovedMilestones(
-                        (prev) => new Set([...prev, milestoneKey]),
+                        (prev) => new Set([...prev, milestoneKey])
                       );
                     } else if (finalStatus === "submitted") {
                       setSubmittedMilestones(
-                        (prev) => new Set([...prev, milestoneKey]),
+                        (prev) => new Set([...prev, milestoneKey])
                       );
                     }
 
@@ -477,7 +477,7 @@ export default function FreelancerPage() {
       try {
         const escrowSummary = await contract.call(
           "getEscrowSummary",
-          Number(escrowId),
+          Number(escrowId)
         );
       } catch (debugError) {
         console.error("Failed to get escrow details:", debugError);
@@ -506,7 +506,11 @@ export default function FreelancerPage() {
         });
       } else {
         // Use regular transaction
-        txHash = await contract.send("startWork", "no-value", Number(escrowId));
+        txHash = await contract.send(
+          "startWork",
+          "no-value",
+          Number(escrowId)
+        );
       }
 
       toast({
@@ -528,7 +532,7 @@ export default function FreelancerPage() {
             wallet.address!.slice(0, 6) + "..." + wallet.address!.slice(-4),
         }),
         clientAddress, // Client address
-        wallet.address || undefined, // Freelancer address
+        wallet.address || undefined // Freelancer address
       );
 
       // Refresh escrows
@@ -662,7 +666,9 @@ export default function FreelancerPage() {
         } else {
           toast({
             title: "Wrong milestone sequence",
-            description: `You can only submit milestone ${expectedMilestoneIndex + 1} at this time. Please complete the previous milestones first.`,
+            description: `You can only submit milestone ${
+              expectedMilestoneIndex + 1
+            } at this time. Please complete the previous milestones first.`,
             variant: "destructive",
           });
         }
@@ -682,7 +688,9 @@ export default function FreelancerPage() {
         if (milestone && milestone[2] && Number(milestone[2]) > 0) {
           toast({
             title: "Milestone already processed",
-            description: `This milestone has already been ${Number(milestone[2]) === 2 ? "approved" : "submitted"} and cannot be submitted again`,
+            description: `This milestone has already been ${
+              Number(milestone[2]) === 2 ? "approved" : "submitted"
+            } and cannot be submitted again`,
             variant: "destructive",
           });
           return;
@@ -736,7 +744,7 @@ export default function FreelancerPage() {
           "no-value",
           escrowId,
           milestoneIndex,
-          description,
+          description
         );
       }
 
@@ -769,7 +777,7 @@ export default function FreelancerPage() {
 
       if (!receipt) {
         throw new Error(
-          "Transaction timeout - please check the blockchain explorer",
+          "Transaction timeout - please check the blockchain explorer"
         );
       }
 
@@ -791,7 +799,7 @@ export default function FreelancerPage() {
             projectTitle: escrow?.projectTitle || `Project #${escrowId}`,
           }),
           clientAddress, // Client address
-          wallet.address || undefined, // Freelancer address
+          wallet.address || undefined // Freelancer address
         );
 
         // Mark this milestone as submitted to prevent double submission
@@ -828,7 +836,7 @@ export default function FreelancerPage() {
   const resubmitMilestone = async (
     escrowId: string,
     milestoneIndex: number,
-    description: string,
+    description: string
   ) => {
     if (!description.trim()) {
       toast({
@@ -875,7 +883,7 @@ export default function FreelancerPage() {
           "no-value",
           escrowId,
           milestoneIndex,
-          description,
+          description
         );
       }
 
@@ -908,7 +916,7 @@ export default function FreelancerPage() {
 
       if (!receipt) {
         throw new Error(
-          "Transaction timeout - please check the blockchain explorer",
+          "Transaction timeout - please check the blockchain explorer"
         );
       }
 
@@ -929,7 +937,7 @@ export default function FreelancerPage() {
               wallet.address!.slice(0, 6) + "..." + wallet.address!.slice(-4),
             projectTitle: escrow?.projectTitle || `Project #${escrowId}`,
           }),
-          clientAddress ? [clientAddress] : undefined, // Notify the client
+          clientAddress ? [clientAddress] : undefined // Notify the client
         );
 
         // Clear form and close dialog
@@ -960,7 +968,7 @@ export default function FreelancerPage() {
   const openDispute = async (
     escrowId: string,
     milestoneIndex: number,
-    reason: string,
+    reason: string
   ) => {
     if (!reason.trim()) {
       toast({
@@ -1007,7 +1015,7 @@ export default function FreelancerPage() {
           "no-value",
           escrowId,
           milestoneIndex,
-          reason,
+          reason
         );
       }
 
@@ -1022,7 +1030,7 @@ export default function FreelancerPage() {
           reason: reason,
           freelancerName:
             wallet.address!.slice(0, 6) + "..." + wallet.address!.slice(-4),
-        }),
+        })
       );
 
       // Refresh escrows
@@ -1123,7 +1131,7 @@ export default function FreelancerPage() {
   };
 
   const getDaysLeftMessage = (
-    daysLeft: number,
+    daysLeft: number
   ): { text: string; color: string; bgColor: string } => {
     if (daysLeft > 7) {
       return {
@@ -1245,16 +1253,15 @@ export default function FreelancerPage() {
                             escrow.milestones.some(
                               (m) =>
                                 m.status === "disputed" ||
-                                m.status === "rejected",
+                                m.status === "rejected"
                             )
                               ? "terminated"
-                              : escrow.status,
+                              : escrow.status
                           )}
                         >
                           {escrow.milestones.some(
                             (m) =>
-                              m.status === "disputed" ||
-                              m.status === "rejected",
+                              m.status === "disputed" || m.status === "rejected"
                           )
                             ? "terminated"
                             : escrow.status}
@@ -1313,7 +1320,7 @@ export default function FreelancerPage() {
                           className={`flex items-center gap-2 p-3 rounded-lg ${(() => {
                             const daysLeft = calculateDaysLeft(
                               escrow.createdAt,
-                              escrow.duration,
+                              escrow.duration
                             );
                             const message = getDaysLeftMessage(daysLeft);
                             return message.bgColor;
@@ -1328,7 +1335,7 @@ export default function FreelancerPage() {
                               className={`font-semibold ${(() => {
                                 const daysLeft = calculateDaysLeft(
                                   escrow.createdAt,
-                                  escrow.duration,
+                                  escrow.duration
                                 );
                                 const message = getDaysLeftMessage(daysLeft);
                                 return message.color;
@@ -1337,7 +1344,7 @@ export default function FreelancerPage() {
                               {(() => {
                                 const daysLeft = calculateDaysLeft(
                                   escrow.createdAt,
-                                  escrow.duration,
+                                  escrow.duration
                                 );
                                 const message = getDaysLeftMessage(daysLeft);
                                 return message.text;
@@ -1381,14 +1388,16 @@ export default function FreelancerPage() {
                                 // For subsequent milestones, check if the previous one is approved
                                 const previousMilestone =
                                   escrow.milestones[index - 1];
-                                const previousMilestoneKey = `${escrow.id}-${index - 1}`;
+                                const previousMilestoneKey = `${escrow.id}-${
+                                  index - 1
+                                }`;
 
                                 // Check if previous milestone is approved
                                 const isPreviousApproved =
                                   previousMilestone &&
                                   (previousMilestone.status === "approved" ||
                                     approvedMilestones.has(
-                                      previousMilestoneKey,
+                                      previousMilestoneKey
                                     ));
 
                                 // Check if there are any submitted milestones before this one that aren't approved
@@ -1428,12 +1437,12 @@ export default function FreelancerPage() {
                                   isApproved
                                     ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
                                     : isSubmitted
-                                      ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
-                                      : isCurrent
-                                        ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
-                                        : isBlocked
-                                          ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                                          : "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700"
+                                    ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
+                                    : isCurrent
+                                    ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
+                                    : isBlocked
+                                    ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                                    : "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700"
                                 }`}
                               >
                                 <div className="flex items-center justify-between mb-2">
@@ -1453,7 +1462,7 @@ export default function FreelancerPage() {
                                     )}
                                     <Badge
                                       className={getMilestoneStatusColor(
-                                        milestone.status,
+                                        milestone.status
                                       )}
                                     >
                                       {milestone.status}
@@ -1464,7 +1473,7 @@ export default function FreelancerPage() {
                                 {/* Client Requirements */}
                                 {milestone.description &&
                                   !milestone.description.includes(
-                                    "To be defined",
+                                    "To be defined"
                                   ) &&
                                   milestone.description !==
                                     `Milestone ${index + 1}` && (
@@ -1476,7 +1485,7 @@ export default function FreelancerPage() {
                                         {milestone.description.length > 80
                                           ? milestone.description.substring(
                                               0,
-                                              80,
+                                              80
                                             ) + "..."
                                           : milestone.description}
                                       </p>
@@ -1596,7 +1605,9 @@ export default function FreelancerPage() {
                               // For subsequent milestones, check if the previous one is approved
                               const previousMilestone =
                                 escrow.milestones[i - 1];
-                              const previousMilestoneKey = `${escrow.id}-${i - 1}`;
+                              const previousMilestoneKey = `${escrow.id}-${
+                                i - 1
+                              }`;
 
                               // Check if previous milestone is approved
                               const isPreviousApproved =
@@ -1679,7 +1690,7 @@ export default function FreelancerPage() {
                                       onClick={() => {
                                         setSelectedEscrowId(escrow.id);
                                         setSelectedMilestoneIndex(
-                                          currentMilestoneIndex,
+                                          currentMilestoneIndex
                                         );
                                         setDisputeReason("");
                                         setShowDisputeDialog(true);
@@ -1702,7 +1713,7 @@ export default function FreelancerPage() {
                               {/* Client Requirements */}
                               {currentMilestone.description &&
                                 !currentMilestone.description.includes(
-                                  "To be defined",
+                                  "To be defined"
                                 ) &&
                                 currentMilestone.description !==
                                   `Milestone ${currentMilestoneIndex + 1}` && (
@@ -1747,7 +1758,7 @@ export default function FreelancerPage() {
                                         onClick={() =>
                                           submitMilestone(
                                             escrow.id,
-                                            currentMilestoneIndex,
+                                            currentMilestoneIndex
                                           )
                                         }
                                         disabled={
@@ -1785,7 +1796,7 @@ export default function FreelancerPage() {
                                     onClick={() => {
                                       setSelectedEscrowId(escrow.id);
                                       setSelectedMilestoneIndex(
-                                        currentMilestoneIndex,
+                                        currentMilestoneIndex
                                       );
                                       setDisputeReason("");
                                       setShowDisputeDialog(true);
@@ -1855,7 +1866,7 @@ export default function FreelancerPage() {
                           openDispute(
                             selectedEscrowId,
                             selectedMilestoneIndex,
-                            disputeReason,
+                            disputeReason
                           );
                           setShowDisputeDialog(false);
                         }
@@ -1904,7 +1915,7 @@ export default function FreelancerPage() {
                         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
                           {(() => {
                             const escrow = escrows.find(
-                              (e) => e.id === selectedResubmitEscrow,
+                              (e) => e.id === selectedResubmitEscrow
                             );
                             if (
                               escrow &&
@@ -1951,7 +1962,7 @@ export default function FreelancerPage() {
                           resubmitMilestone(
                             selectedResubmitEscrow,
                             selectedResubmitMilestone,
-                            resubmitDescription,
+                            resubmitDescription
                           );
                         }
                       }}

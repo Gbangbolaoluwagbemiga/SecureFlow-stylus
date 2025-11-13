@@ -348,8 +348,20 @@ export default function DashboardPage() {
       const contract = getContract(CONTRACTS.SECUREFLOW_ESCROW, SECUREFLOW_ABI);
 
       // Get total number of escrows
-      const totalEscrows = await contract.call("nextEscrowId");
-      const escrowCount = Number(totalEscrows);
+      let totalEscrows;
+      try {
+        totalEscrows = await contract.call("nextEscrowId");
+      } catch (error: any) {
+        // Contract might not be initialized or there's an issue
+        console.warn(
+          "Failed to get nextEscrowId, contract may not be initialized:",
+          error
+        );
+        setEscrows([]);
+        setLoading(false);
+        return;
+      }
+      const escrowCount = Number(totalEscrows || 0);
 
       const userEscrows: Escrow[] = [];
 

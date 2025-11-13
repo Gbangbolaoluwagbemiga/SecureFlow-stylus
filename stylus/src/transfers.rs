@@ -1,7 +1,7 @@
 //! Token transfer functions for SecureFlow
 
 extern crate alloc;
-use alloc::vec::Vec;
+use alloc::{vec::Vec, string::String};
 
 use stylus_sdk::{
     call::{self, Call},
@@ -9,6 +9,7 @@ use stylus_sdk::{
 };
 use alloy_primitives::{Address, U256};
 use crate::storage::SecureFlow;
+use crate::errors::Error;
 
 impl SecureFlow {
     pub fn transfer_out(&mut self, token: Address, to: Address, amount: U256) -> Result<(), Vec<u8>> {
@@ -42,8 +43,13 @@ impl SecureFlow {
         calldata.extend_from_slice(from.as_slice());
         calldata.extend_from_slice(contract::address().as_slice());
         calldata.extend_from_slice(&amount.to_be_bytes::<32>());
-        call::call(Call::new(), token, &calldata)?;
-        Ok(())
+        match call::call(Call::new(), token, &calldata) {
+            Ok(_) => Ok(()),
+            Err(_) => {
+                // Token transfer failed - likely insufficient balance or allowance
+                Err(Error::InvalidAmount(String::new()).into())
+            }
+        }
     }
 }
 

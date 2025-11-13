@@ -369,6 +369,54 @@ export function Web3Provider({ children }: { children: ReactNode }) {
             ARBITRUM_SEPOLIA.rpcUrls[0]
           );
           const contract = new ethers.Contract(targetAddress, abi, provider);
+
+          // Special handling for getEscrowSummary - Stylus returns tuples differently
+          if (method === "getEscrowSummary") {
+            try {
+              const iface = new ethers.Interface(abi);
+              const data = iface.encodeFunctionData("getEscrowSummary", args);
+              const result = await provider.call({
+                to: targetAddress,
+                data: data,
+              });
+
+              // Manually decode the tuple return
+              // The return type is: (address,address,address[],uint256,uint256,uint256,uint256,address,uint256,bool,uint256,uint256,bool,string,string)
+              const abiCoder = new ethers.AbiCoder();
+              const types = [
+                "address", // depositor
+                "address", // beneficiary
+                "address[]", // arbiters
+                "uint256", // status
+                "uint256", // totalAmount
+                "uint256", // paidAmount
+                "uint256", // remaining
+                "address", // token
+                "uint256", // deadline
+                "bool", // workStarted
+                "uint256", // createdAt
+                "uint256", // milestoneCount
+                "bool", // isOpenJob
+                "string", // projectTitle
+                "string", // projectDescription
+              ];
+
+              // Stylus wraps the tuple in a dynamic array encoding (offset pointer at start)
+              // Skip the first 32 bytes (offset pointer) and decode the rest
+              const decoded = abiCoder.decode(types, "0x" + result.slice(66));
+              // Convert to array for easier access in frontend
+              return Array.from(decoded);
+            } catch (decodeError: any) {
+              // Fallback to regular call if manual decode fails
+              console.warn(
+                "Manual decode failed, trying regular call:",
+                decodeError
+              );
+              const result = await contract[method](...args);
+              return result;
+            }
+          }
+
           const result = await contract[method](...args);
 
           // For owner() calls, ensure we return a clean address string
@@ -409,6 +457,21 @@ export function Web3Provider({ children }: { children: ReactNode }) {
             gasLimit = "0xc350";
           } else {
             try {
+              const gasEstimateValue =
+                value !== "0x0" && value !== "no-value" ? value : "0x0";
+              if (
+                method === "createEscrowNative" ||
+                method === "createEscrow"
+              ) {
+                console.log(`🔍 Gas estimation for ${method}:`, {
+                  value: gasEstimateValue,
+                  valueInWei:
+                    gasEstimateValue !== "0x0"
+                      ? BigInt(gasEstimateValue).toString()
+                      : "0",
+                  dataLength: data.length,
+                });
+              }
               const estimatedGas = await window.ethereum.request({
                 method: "eth_estimateGas",
                 params: [
@@ -416,14 +479,127 @@ export function Web3Provider({ children }: { children: ReactNode }) {
                     from: wallet.address,
                     to: targetAddress,
                     data,
-                    value:
-                      value !== "0x0" && value !== "no-value" ? value : "0x0",
+                    value: gasEstimateValue,
                   },
                 ],
               });
               const gasWithBuffer = Math.floor(Number(estimatedGas) * 1.1);
               gasLimit = `0x${gasWithBuffer.toString(16)}`;
-            } catch (gasError) {
+            } catch (gasError: any) {
+              // Try to extract revert reason from error
+              let revertReason = "Unknown error";
+              try {
+                if (gasError.data) {
+                  // Error data might be in different formats
+                  const errorData = gasError.data;
+                  if (
+                    typeof errorData === "string" &&
+                    errorData.startsWith("0x")
+                  ) {
+                    // Try to decode as UTF-8 string (Stylus returns error codes as bytes)
+                    try {
+                      const decoded = ethers.toUtf8String(
+                        "0x" + errorData.slice(-64)
+                      );
+                      if (decoded && decoded.trim().length > 0) {
+                        revertReason = decoded.trim();
+                      }
+                    } catch (_) {
+                      // If UTF-8 decode fails, try to extract error code
+                      if (errorData.length > 10) {
+                        revertReason = `Error data: ${errorData.slice(
+                          0,
+                          20
+                        )}...`;
+                      }
+                    }
+                  }
+                }
+                if (gasError.reason) {
+                  revertReason = gasError.reason;
+                }
+                if (gasError.message) {
+                  // Check if message contains error data
+                  const dataMatch =
+                    gasError.message.match(/data[=:]"?([^"]+)"?/);
+                  if (dataMatch && dataMatch[1] && dataMatch[1] !== "0x") {
+                    try {
+                      const decoded = ethers.toUtf8String(
+                        "0x" + dataMatch[1].slice(-64)
+                      );
+                      if (decoded && decoded.trim().length > 0) {
+                        revertReason = decoded.trim();
+                      }
+                    } catch (_) {}
+                  }
+                }
+              } catch (decodeError) {
+                console.warn("Could not decode error:", decodeError);
+              }
+
+              // Try to call the contract directly to get better error info
+              if (
+                method === "createEscrowNative" ||
+                method === "createEscrow"
+              ) {
+                try {
+                  const provider = new ethers.JsonRpcProvider(
+                    "https://sepolia-rollup.arbitrum.io/rpc"
+                  );
+                  const callResult = await provider.call({
+                    to: targetAddress,
+                    data,
+                    value:
+                      value !== "0x0" && value !== "no-value" ? value : "0x0",
+                    from: wallet.address,
+                  });
+                } catch (callError: any) {
+                  if (callError.data) {
+                    const errorData = callError.data;
+                    if (
+                      typeof errorData === "string" &&
+                      errorData.startsWith("0x") &&
+                      errorData.length > 10
+                    ) {
+                      try {
+                        const decoded = ethers.toUtf8String(
+                          "0x" + errorData.slice(-64)
+                        );
+                        if (decoded && decoded.trim().length > 0) {
+                          revertReason = decoded.trim();
+                        } else {
+                          revertReason = `Error hex: ${errorData.slice(
+                            0,
+                            42
+                          )}...`;
+                        }
+                      } catch (_) {
+                        revertReason = `Error hex: ${errorData.slice(
+                          0,
+                          42
+                        )}...`;
+                      }
+                    }
+                  }
+                  if (callError.reason) {
+                    revertReason = callError.reason;
+                  }
+                }
+              }
+
+              console.error(`❌ Gas estimation failed for ${method}:`, {
+                message: gasError.message,
+                revertReason: revertReason,
+                errorData: gasError.data,
+                errorDataString:
+                  typeof gasError.data === "string"
+                    ? gasError.data
+                    : JSON.stringify(gasError.data),
+                value: value !== "0x0" && value !== "no-value" ? value : "0x0",
+                data: data.slice(0, 20) + "...",
+                fullError: gasError,
+                errorKeys: Object.keys(gasError),
+              });
               if (method === "unpause" || method === "pause") {
                 gasLimit = "0x20000";
               } else if (
@@ -439,6 +615,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
               ) {
                 gasLimit = "0x60000";
               }
+              // Don't throw - use fallback gas limit and let the transaction try
             }
           }
 

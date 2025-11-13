@@ -82,7 +82,7 @@ export function MilestoneActions({
 
   // Check if this project is terminated (has disputed milestones)
   const isProjectTerminated = allMilestones.some(
-    (m) => m.status === "disputed" || m.status === "rejected",
+    (m) => m.status === "disputed" || m.status === "rejected"
   );
 
   // Poll transaction receipt for confirmation
@@ -107,7 +107,7 @@ export function MilestoneActions({
     }
 
     throw new Error(
-      "Transaction timeout - please check the blockchain explorer",
+      "Transaction timeout - please check the blockchain explorer"
     );
   };
 
@@ -174,7 +174,9 @@ export function MilestoneActions({
     ) {
       toast({
         title: "Reason required",
-        description: `Please provide a reason for ${actionType === "dispute" ? "disputing" : "rejecting"} this milestone`,
+        description: `Please provide a reason for ${
+          actionType === "dispute" ? "disputing" : "rejecting"
+        } this milestone`,
         variant: "destructive",
       });
       return;
@@ -198,8 +200,8 @@ export function MilestoneActions({
         actionType === "approve"
           ? "approveMilestone"
           : actionType === "dispute"
-            ? "disputeMilestone"
-            : "",
+          ? "disputeMilestone"
+          : ""
       );
 
       switch (actionType) {
@@ -217,7 +219,7 @@ export function MilestoneActions({
               freelancerName: "Freelancer",
             }),
             payerAddress, // Client address
-            beneficiaryAddress, // Freelancer address
+            beneficiaryAddress // Freelancer address
           );
           break;
         case "submit":
@@ -232,7 +234,7 @@ export function MilestoneActions({
             ]);
             txHash = await executeTransaction(
               CONTRACTS.SECUREFLOW_ESCROW,
-              data,
+              data
             );
             toast({
               title: "🚀 Gasless Milestone Submitted!",
@@ -245,10 +247,10 @@ export function MilestoneActions({
               createMilestoneNotification(
                 "submitted",
                 escrowId,
-                milestoneIndex,
+                milestoneIndex
               ),
               payerAddress, // Client address
-              beneficiaryAddress, // Freelancer address
+              beneficiaryAddress // Freelancer address
             );
           } else {
             txHash = await contract.send(
@@ -256,7 +258,7 @@ export function MilestoneActions({
               "no-value",
               escrowId,
               milestoneIndex,
-              milestone.description,
+              milestone.description
             );
             toast({
               title: "Milestone submitted!",
@@ -268,10 +270,10 @@ export function MilestoneActions({
               createMilestoneNotification(
                 "submitted",
                 escrowId,
-                milestoneIndex,
+                milestoneIndex
               ),
               payerAddress, // Client address
-              beneficiaryAddress, // Freelancer address
+              beneficiaryAddress // Freelancer address
             );
           }
 
@@ -302,7 +304,7 @@ export function MilestoneActions({
               ]);
               txHash = await executeTransaction(
                 CONTRACTS.SECUREFLOW_ESCROW,
-                data,
+                data
               );
               toast({
                 title: "🚀 Gasless Milestone Approved!",
@@ -316,12 +318,12 @@ export function MilestoneActions({
                 const gasEstimate = await contract.estimateGas(
                   "approveMilestone",
                   escrowId,
-                  milestoneIndex,
+                  milestoneIndex
                 );
               } catch (gasError) {
                 // Gas estimation failed, but continue with transaction
                 console.log(
-                  "Gas estimation failed, proceeding with transaction",
+                  "Gas estimation failed, proceeding with transaction"
                 );
               }
 
@@ -335,7 +337,7 @@ export function MilestoneActions({
                     "approveMilestone",
                     "no-value",
                     escrowId,
-                    milestoneIndex,
+                    milestoneIndex
                   );
                   break; // Success, exit retry loop
                 } catch (sendError: any) {
@@ -350,7 +352,9 @@ export function MilestoneActions({
 
                   toast({
                     title: "Retrying transaction",
-                    description: `Attempt ${retryCount + 1} of ${maxRetries}. Please wait...`,
+                    description: `Attempt ${
+                      retryCount + 1
+                    } of ${maxRetries}. Please wait...`,
                     variant: "default",
                   });
                 }
@@ -368,8 +372,8 @@ export function MilestoneActions({
                   new Promise((_, reject) =>
                     setTimeout(
                       () => reject(new Error("Transaction timeout")),
-                      60000,
-                    ),
+                      60000
+                    )
                   ),
                 ]);
               } else {
@@ -389,10 +393,10 @@ export function MilestoneActions({
                   createMilestoneNotification(
                     "approved",
                     escrowId,
-                    milestoneIndex,
+                    milestoneIndex
                   ),
                   payerAddress, // Client address
-                  beneficiaryAddress, // Freelancer address
+                  beneficiaryAddress // Freelancer address
                 );
 
                 // Close the modal immediately after successful approval
@@ -405,7 +409,7 @@ export function MilestoneActions({
                 window.dispatchEvent(
                   new CustomEvent("milestoneApproved", {
                     detail: { escrowId, milestoneIndex },
-                  }),
+                  })
                 );
 
                 // Call onSuccess to refresh data first
@@ -441,7 +445,7 @@ export function MilestoneActions({
                 window.dispatchEvent(
                   new CustomEvent("milestoneApproved", {
                     detail: { escrowId, milestoneIndex },
-                  }),
+                  })
                 );
 
                 // Call onSuccess to refresh data first
@@ -536,7 +540,7 @@ export function MilestoneActions({
               ]);
               txHash = await executeTransaction(
                 CONTRACTS.SECUREFLOW_ESCROW,
-                data,
+                data
               );
               toast({
                 title: "🚀 Smart Account Milestone rejected!",
@@ -550,7 +554,7 @@ export function MilestoneActions({
                 "no-value",
                 escrowId,
                 milestoneIndex,
-                disputeReason,
+                disputeReason
               );
             }
 
@@ -565,8 +569,8 @@ export function MilestoneActions({
                   new Promise((_, reject) =>
                     setTimeout(
                       () => reject(new Error("Transaction timeout")),
-                      60000,
-                    ),
+                      60000
+                    )
                   ),
                 ]);
               } else {
@@ -587,10 +591,10 @@ export function MilestoneActions({
                     "rejected",
                     escrowId,
                     milestoneIndex,
-                    { reason: disputeReason },
+                    { reason: disputeReason }
                   ),
                   payerAddress, // Client address
-                  beneficiaryAddress, // Freelancer address
+                  beneficiaryAddress // Freelancer address
                 );
 
                 setDialogOpen(false);
@@ -658,7 +662,7 @@ export function MilestoneActions({
               ]);
               txHash = await executeTransaction(
                 CONTRACTS.SECUREFLOW_ESCROW,
-                data,
+                data
               );
               toast({
                 title: "🚀 Smart Account Milestone resubmitted!",
@@ -672,7 +676,7 @@ export function MilestoneActions({
                 "no-value",
                 escrowId,
                 milestoneIndex,
-                resubmitMessage || milestone.description, // Use resubmit message or fallback to description
+                resubmitMessage || milestone.description // Use resubmit message or fallback to description
               );
             }
 
@@ -687,8 +691,8 @@ export function MilestoneActions({
                   new Promise((_, reject) =>
                     setTimeout(
                       () => reject(new Error("Transaction timeout")),
-                      60000,
-                    ),
+                      60000
+                    )
                   ),
                 ]);
               } else {
@@ -708,10 +712,10 @@ export function MilestoneActions({
                   createMilestoneNotification(
                     "submitted",
                     escrowId,
-                    milestoneIndex,
+                    milestoneIndex
                   ),
                   payerAddress, // Client address
-                  beneficiaryAddress, // Freelancer address
+                  beneficiaryAddress // Freelancer address
                 );
 
                 setDialogOpen(false);
@@ -767,7 +771,7 @@ export function MilestoneActions({
               ]);
               txHash = await executeTransaction(
                 CONTRACTS.SECUREFLOW_ESCROW,
-                data,
+                data
               );
               toast({
                 title: "🚀 Smart Account Dispute created!",
@@ -781,10 +785,10 @@ export function MilestoneActions({
                   "disputed",
                   escrowId,
                   milestoneIndex,
-                  { reason: disputeReason },
+                  { reason: disputeReason }
                 ),
                 payerAddress, // Client address
-                beneficiaryAddress, // Freelancer address
+                beneficiaryAddress // Freelancer address
               );
             } else {
               txHash = await contract.send(
@@ -792,14 +796,14 @@ export function MilestoneActions({
                 "no-value",
                 escrowId,
                 milestoneIndex,
-                disputeReason,
+                disputeReason
               );
             }
 
             // Check if we got a valid transaction hash
             if (!txHash) {
               throw new Error(
-                "No transaction hash received - transaction may have failed",
+                "No transaction hash received - transaction may have failed"
               );
             }
 
@@ -814,8 +818,8 @@ export function MilestoneActions({
                   new Promise((_, reject) =>
                     setTimeout(
                       () => reject(new Error("Transaction timeout")),
-                      60000,
-                    ),
+                      60000
+                    )
                   ),
                 ]);
               } else {
@@ -840,7 +844,7 @@ export function MilestoneActions({
                 window.dispatchEvent(
                   new CustomEvent("milestoneDisputed", {
                     detail: { escrowId, milestoneIndex },
-                  }),
+                  })
                 );
 
                 // Call onSuccess to refresh data first
@@ -874,7 +878,7 @@ export function MilestoneActions({
                 window.dispatchEvent(
                   new CustomEvent("milestoneDisputed", {
                     detail: { escrowId, milestoneIndex },
-                  }),
+                  })
                 );
 
                 // Call onSuccess to refresh data first
@@ -970,35 +974,45 @@ export function MilestoneActions({
       case "submit":
         return {
           title: "Submit Milestone",
-          description: `Submit milestone ${milestoneIndex + 1} for review. The client will be notified to approve your work.`,
+          description: `Submit milestone ${
+            milestoneIndex + 1
+          } for review. The client will be notified to approve your work.`,
           icon: Send,
           confirmText: "Submit",
         };
       case "approve":
         return {
           title: "Approve Milestone",
-          description: `Approve milestone ${milestoneIndex + 1} and release ${(Number.parseFloat(milestone.amount) / 1e18).toFixed(2)} tokens to the beneficiary.`,
+          description: `Approve milestone ${milestoneIndex + 1} and release ${(
+            Number.parseFloat(milestone.amount) / 1e18
+          ).toFixed(2)} tokens to the beneficiary.`,
           icon: CheckCircle2,
           confirmText: "Approve & Release",
         };
       case "reject":
         return {
           title: "Reject Milestone",
-          description: `Reject milestone ${milestoneIndex + 1}. The freelancer will be able to resubmit after making changes.`,
+          description: `Reject milestone ${
+            milestoneIndex + 1
+          }. The freelancer will be able to resubmit after making changes.`,
           icon: XCircle,
           confirmText: "Reject",
         };
       case "resubmit":
         return {
           title: "Resubmit Milestone",
-          description: `Resubmit milestone ${milestoneIndex + 1} for client review. Make sure you've addressed the feedback.`,
+          description: `Resubmit milestone ${
+            milestoneIndex + 1
+          } for client review. Make sure you've addressed the feedback.`,
           icon: Send,
           confirmText: "Resubmit",
         };
       case "dispute":
         return {
           title: "Dispute Milestone",
-          description: `Dispute milestone ${milestoneIndex + 1}. This will notify the admin to review the dispute.`,
+          description: `Dispute milestone ${
+            milestoneIndex + 1
+          }. This will notify the admin to review the dispute.`,
           icon: Gavel,
           confirmText: "Dispute",
         };
@@ -1252,7 +1266,9 @@ export function MilestoneActions({
               <textarea
                 value={disputeReason}
                 onChange={(e) => setDisputeReason(e.target.value)}
-                placeholder={`Please explain why you are ${actionType === "dispute" ? "disputing" : "rejecting"} this milestone...`}
+                placeholder={`Please explain why you are ${
+                  actionType === "dispute" ? "disputing" : "rejecting"
+                } this milestone...`}
                 className="w-full p-3 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 rows={3}
                 required

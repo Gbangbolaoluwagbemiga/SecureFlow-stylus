@@ -91,7 +91,7 @@ export function DisputeResolution({
         try {
           const escrowSummary = await contract.call(
             "getEscrowSummary",
-            escrowId,
+            escrowId
           );
           const escrowStatus = Number(escrowSummary[3]); // status is at index 3
 
@@ -107,7 +107,7 @@ export function DisputeResolution({
               const milestone = await contract.call(
                 "milestones",
                 escrowId,
-                milestoneIndex,
+                milestoneIndex
               );
               const milestoneStatus = Number(milestone[2]); // status is at index 2
 
@@ -139,7 +139,7 @@ export function DisputeResolution({
                 const milestone = await contract.call(
                   "milestones",
                   escrowId,
-                  milestoneIndex,
+                  milestoneIndex
                 );
                 const milestoneStatus = Number(milestone[2]); // status is at index 2
 
@@ -174,7 +174,9 @@ export function DisputeResolution({
         const newDisputeCount = disputes.length - lastDisputeCount;
         toast({
           title: "New Disputes Detected",
-          description: `${newDisputeCount} new dispute${newDisputeCount > 1 ? "s" : ""} require${newDisputeCount > 1 ? "" : "s"} your attention`,
+          description: `${newDisputeCount} new dispute${
+            newDisputeCount > 1 ? "s" : ""
+          } require${newDisputeCount > 1 ? "" : "s"} your attention`,
           variant: "destructive",
         });
       }
@@ -217,7 +219,7 @@ export function DisputeResolution({
         "no-value",
         selectedDispute.escrowId,
         selectedDispute.milestoneIndex,
-        beneficiaryAmountWei,
+        beneficiaryAmountWei
       );
 
       toast({
@@ -240,7 +242,7 @@ export function DisputeResolution({
           },
         },
         selectedDispute.clientAddress,
-        selectedDispute.freelancerAddress,
+        selectedDispute.freelancerAddress
       );
 
       setResolutionDialogOpen(false);

@@ -25,11 +25,18 @@ pub enum Error {
     NothingToRefund(String),
     DeadlineNotPassed(String),
     EmergencyPeriodNotReached(String),
+    // Specific errors for escrow creation
+    BeneficiaryEqualsDepositor(String),
+    EmptyMilestones(String),
+    ZeroMilestoneAmount(String),
+    MilestoneCountMismatch(String),
+    EmptyProjectTitle(String),
+    ValueMismatch(String),
 }
 
 impl From<Error> for Vec<u8> {
     fn from(err: Error) -> Self {
-        // Use shorter error codes to save space
+        // Short error codes to save contract size
         match err {
             Error::Unauthorized(_) => b"UNAUTH".to_vec(),
             Error::Paused(_) => b"PAUSED".to_vec(),
@@ -49,7 +56,13 @@ impl From<Error> for Vec<u8> {
             Error::NothingToRefund(_) => b"NO_REFUND".to_vec(),
             Error::DeadlineNotPassed(_) => b"DEADLINE".to_vec(),
             Error::EmergencyPeriodNotReached(_) => b"EMERG_NR".to_vec(),
+            // Specific errors for escrow creation
+            Error::BeneficiaryEqualsDepositor(_) => b"BENEF_EQ_DEP".to_vec(),
+            Error::EmptyMilestones(_) => b"EMPTY_MS".to_vec(),
+            Error::ZeroMilestoneAmount(_) => b"ZERO_MS_AMT".to_vec(),
+            Error::MilestoneCountMismatch(_) => b"MS_COUNT_MIS".to_vec(),
+            Error::EmptyProjectTitle(_) => b"EMPTY_TITLE".to_vec(),
+            Error::ValueMismatch(_) => b"VALUE_MIS".to_vec(),
         }
     }
 }
-

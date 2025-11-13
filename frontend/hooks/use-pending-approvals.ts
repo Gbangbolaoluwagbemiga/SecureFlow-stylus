@@ -27,8 +27,20 @@ export function usePendingApprovals() {
       }
 
       // Get total number of escrows
-      const totalEscrows = await contract.call("nextEscrowId");
-      const escrowCount = Number(totalEscrows);
+      let totalEscrows;
+      try {
+        totalEscrows = await contract.call("nextEscrowId");
+      } catch (error: any) {
+        // Contract might not be initialized or there's an issue
+        console.warn(
+          "Failed to get nextEscrowId, contract may not be initialized:",
+          error
+        );
+        setHasPendingApprovals(false);
+        setLoading(false);
+        return;
+      }
+      const escrowCount = Number(totalEscrows || 0);
 
       // Check if current wallet has any jobs with applications
       if (escrowCount > 1) {
@@ -87,8 +99,3 @@ export function usePendingApprovals() {
     refreshApprovals: checkPendingApprovals,
   };
 }
-
-
-
-
-

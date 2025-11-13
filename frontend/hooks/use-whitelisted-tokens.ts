@@ -64,10 +64,21 @@ export function useWhitelistedTokens() {
           }
 
           // Check if token is whitelisted
-          const isWhitelisted = await contract.call(
-            "whitelistedTokens",
-            token.address
-          );
+          let isWhitelisted = false;
+          try {
+            isWhitelisted = await contract.call(
+              "whitelistedTokens",
+              token.address
+            );
+          } catch (error: any) {
+            // Contract might not be initialized or there's an issue
+            console.warn(
+              `Error checking token ${token.address}:`,
+              error.message || error
+            );
+            // Continue with next token
+            continue;
+          }
 
           // If whitelisted, try to get token info
           if (isWhitelisted) {

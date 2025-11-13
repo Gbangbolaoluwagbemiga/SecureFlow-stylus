@@ -34,7 +34,9 @@ export default function JobsPage() {
   const [ongoingProjectsCount, setOngoingProjectsCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
-  const getStatusFromNumber = (status: number): "pending" | "disputed" | "active" | "completed" => {
+  const getStatusFromNumber = (
+    status: number
+  ): "pending" | "disputed" | "active" | "completed" => {
     switch (status) {
       case 0:
         return "pending";
@@ -161,7 +163,7 @@ export default function JobsPage() {
           const hasUserApplied = await contract.call(
             "hasUserApplied",
             job.id,
-            wallet.address,
+            wallet.address
           );
           applicationStatus[job.id] = Boolean(hasUserApplied);
         } catch (error) {
@@ -229,7 +231,7 @@ export default function JobsPage() {
                   const hasAppliedResult = await contract.call(
                     "hasUserApplied",
                     i,
-                    wallet.address,
+                    wallet.address
                   );
 
                   // Handle different possible return types - be more strict about what counts as "applied"
@@ -272,7 +274,7 @@ export default function JobsPage() {
                           "getApplicationsPage",
                           i, // escrowId
                           0, // offset
-                          1, // limit - start with 1
+                          1 // limit - start with 1
                         );
                       } catch (error1) {
                         try {
@@ -280,7 +282,7 @@ export default function JobsPage() {
                             "getApplicationsPage",
                             i, // escrowId
                             0, // offset
-                            10, // limit - try 10
+                            10 // limit - try 10
                           );
                         } catch (error2) {
                           throw error2;
@@ -292,7 +294,7 @@ export default function JobsPage() {
                           (app: any) =>
                             app.freelancer &&
                             app.freelancer.toLowerCase() ===
-                              wallet.address?.toLowerCase(),
+                              wallet.address?.toLowerCase()
                         );
 
                         if (userInApplications) {
@@ -322,7 +324,7 @@ export default function JobsPage() {
                   "getApplicationsPage",
                   i, // escrowId
                   0, // offset
-                  100, // limit
+                  100 // limit
                 );
                 applicationCount = applications ? applications.length : 0;
               } catch (error) {
@@ -344,8 +346,8 @@ export default function JobsPage() {
                   0,
                   Math.round(
                     (Number(escrowSummary[8]) - Number(escrowSummary[10])) /
-                      (24 * 60 * 60),
-                  ),
+                      (24 * 60 * 60)
+                  )
                 ), // Convert seconds to days, ensure non-negative and round to nearest day
                 milestones: [], // Would need to fetch milestones separately
                 // projectTitle: escrowSummary[13] || "", // projectTitle - removed as not in Escrow interface
@@ -387,7 +389,7 @@ export default function JobsPage() {
   const handleApply = async (
     job: Escrow,
     coverLetter: string,
-    proposedTimeline: string,
+    proposedTimeline: string
   ) => {
     if (!job || !wallet.isConnected) return;
 
@@ -422,11 +424,11 @@ export default function JobsPage() {
       let userHasApplied = false;
 
       try {
-        // First try the hasUserApplied function
+        // First try the has_user_applied function
         const hasUserAppliedResult = await contract.call(
           "hasUserApplied",
           job.id,
-          wallet.address,
+          wallet.address
         );
 
         // Handle different return types including Proxy(Result) objects
@@ -459,7 +461,7 @@ export default function JobsPage() {
             "getApplicationsPage",
             job.id,
             0, // offset
-            100, // limit
+            100 // limit
           );
 
           if (applications && Array.isArray(applications)) {
@@ -468,7 +470,8 @@ export default function JobsPage() {
               const freelancerAddress = app.freelancer || app[0]; // Try different possible structures
               return (
                 freelancerAddress &&
-                freelancerAddress.toLowerCase() === wallet.address?.toLowerCase()
+                freelancerAddress.toLowerCase() ===
+                  wallet.address?.toLowerCase()
               );
             });
           }
@@ -492,7 +495,7 @@ export default function JobsPage() {
         "no-value",
         job.id,
         coverLetter,
-        proposedTimeline,
+        proposedTimeline
       );
 
       toast({
@@ -503,12 +506,17 @@ export default function JobsPage() {
 
       // Add notification for job application submission - notify the CLIENT (job creator)
       addNotification(
-        createApplicationNotification("submitted", Number(job.id), wallet.address!, {
-          jobTitle: job.projectDescription || `Job #${job.id}`,
-          freelancerName:
-            wallet.address!.slice(0, 6) + "..." + wallet.address!.slice(-4),
-        }),
-        [job.payer], // Notify the client (job creator)
+        createApplicationNotification(
+          "submitted",
+          Number(job.id),
+          wallet.address!,
+          {
+            jobTitle: job.projectDescription || `Job #${job.id}`,
+            freelancerName:
+              wallet.address!.slice(0, 6) + "..." + wallet.address!.slice(-4),
+          }
+        ),
+        [job.payer] // Notify the client (job creator)
       );
 
       setCoverLetter("");
@@ -543,8 +551,8 @@ export default function JobsPage() {
         ?.toLowerCase()
         .includes(searchQuery.toLowerCase()) ||
       job.milestones.some((m) =>
-        m.description.toLowerCase().includes(searchQuery.toLowerCase()),
-      ),
+        m.description.toLowerCase().includes(searchQuery.toLowerCase())
+      )
   );
 
   if (!wallet.isConnected || loading) {

@@ -27,18 +27,31 @@ export function useJobCreatorStatus() {
       }
 
       // Get total number of escrows
-      const totalEscrows = await contract.call("nextEscrowId");
-      const escrowCount = Number(totalEscrows);
+      let totalEscrows;
+      try {
+        totalEscrows = await contract.call("nextEscrowId");
+      } catch (error: any) {
+        // Contract might not be initialized or there's an issue
+        console.warn(
+          "Failed to get nextEscrowId, contract may not be initialized:",
+          error
+        );
+        setIsJobCreator(false);
+        setLoading(false);
+        return;
+      }
+      const escrowCount = Number(totalEscrows || 0);
 
       // Check if current wallet has created any escrows
       if (escrowCount > 1) {
         for (let i = 1; i < escrowCount; i++) {
           try {
             const escrowSummary = await contract.call("getEscrowSummary", i);
-            
+
             // Check if current user is the depositor (job creator)
-            const isMyJob = escrowSummary[0].toLowerCase() === wallet.address?.toLowerCase();
-            
+            const isMyJob =
+              escrowSummary[0].toLowerCase() === wallet.address?.toLowerCase();
+
             if (isMyJob) {
               setIsJobCreator(true);
               setLoading(false);
@@ -50,7 +63,7 @@ export function useJobCreatorStatus() {
           }
         }
       }
-      
+
       setIsJobCreator(false);
     } catch (error) {
       setIsJobCreator(false);

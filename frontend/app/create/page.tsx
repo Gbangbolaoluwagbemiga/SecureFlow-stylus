@@ -524,14 +524,27 @@ export default function CreateEscrowPage() {
       });
 
       let txHash;
+      console.log(
+        "🔍 Starting escrow creation, token:",
+        formData.token,
+        "ZERO_ADDRESS:",
+        ZERO_ADDRESS
+      );
 
       if (formData.token === ZERO_ADDRESS) {
+        console.log("✅ Using native ETH (createEscrowNative)");
         // Use createEscrowNative for native ETH tokens
+        console.log(
+          "💰 Calculating total amount from budget:",
+          formData.totalBudget
+        );
         const totalAmountInWei = BigInt(
           Math.floor(Number.parseFloat(formData.totalBudget) * 10 ** 18)
         ).toString();
+        console.log("💰 Total amount in wei:", totalAmountInWei);
 
         // Check native token balance
+        console.log("💳 Checking ETH balance...");
         try {
           const balance = await window.ethereum.request({
             method: "eth_getBalance",
@@ -540,21 +553,32 @@ export default function CreateEscrowPage() {
 
           const balanceInWei = BigInt(balance);
           const requiredAmount = BigInt(totalAmountInWei);
+          console.log("💳 Balance check:", {
+            balance: balanceInWei.toString(),
+            required: requiredAmount.toString(),
+            balanceInEth: Number(balanceInWei) / 1e18,
+            requiredInEth: Number(requiredAmount) / 1e18,
+          });
 
-          // Also need some ETH for gas
-          const gasReserve = BigInt("100000000000000000"); // 0.1 ETH for gas
+          // Also need some ETH for gas (Arbitrum gas is much cheaper)
+          const gasReserve = BigInt("1000000000000000"); // 0.001 ETH for gas (should be plenty on Arbitrum)
           const totalNeeded = requiredAmount + gasReserve;
+          console.log(
+            "💳 Total needed (escrow + gas):",
+            totalNeeded.toString()
+          );
 
           if (balanceInWei < totalNeeded) {
             const { ethers } = await import("ethers");
-            throw new Error(
-              `Insufficient ETH balance. You have ${ethers.formatEther(
-                balanceInWei
-              )} ETH but need ${ethers.formatEther(
-                requiredAmount
-              )} ETH for escrow + ~0.1 ETH for gas.`
-            );
+            const errorMsg = `Insufficient ETH balance. You have ${ethers.formatEther(
+              balanceInWei
+            )} ETH but need ${ethers.formatEther(
+              requiredAmount
+            )} ETH for escrow + ~0.1 ETH for gas.`;
+            console.error("❌ INSUFFICIENT BALANCE:", errorMsg);
+            throw new Error(errorMsg);
           }
+          console.log("✅ Balance check passed!");
 
           if (balanceInWei < requiredAmount) {
             const { ethers } = await import("ethers");
@@ -576,13 +600,17 @@ export default function CreateEscrowPage() {
         }
 
         // Convert milestone amounts to wei (BigInt)
+        console.log("📊 Converting milestone amounts to wei...");
         const milestoneAmountsInWei = formData.milestones.map((m) => {
           const amount = Number.parseFloat(m.amount);
           if (isNaN(amount) || amount <= 0) {
             throw new Error(`Invalid milestone amount: ${m.amount}`);
           }
-          return BigInt(Math.floor(amount * 10 ** 18)).toString();
+          const inWei = BigInt(Math.floor(amount * 10 ** 18)).toString();
+          console.log(`📊 Milestone: ${m.amount} tokens = ${inWei} wei`);
+          return inWei;
         });
+        console.log("📊 All milestone amounts:", milestoneAmountsInWei);
 
         // Calculate total from milestones to verify it matches budget
         const totalFromMilestones = milestoneAmountsInWei.reduce(
@@ -603,6 +631,7 @@ export default function CreateEscrowPage() {
         }
 
         // Check if arbiter is authorized before using
+        console.log("👮 Checking arbiter authorization...");
         const defaultArbiter = "0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41";
         let arbiters = [defaultArbiter];
         const requiredConfirmations = 1;
@@ -613,7 +642,7 @@ export default function CreateEscrowPage() {
             "authorizedArbiters",
             defaultArbiter
           );
-          console.log("🔍 Arbiter authorization check:", {
+          console.log("👮 Arbiter authorization check:", {
             arbiter: defaultArbiter,
             isAuthorized: isArbiterAuthorized,
           });
@@ -632,9 +661,90 @@ export default function CreateEscrowPage() {
         }
 
         // Convert duration from days to seconds
+        console.log("⏰ Converting duration:", formData.duration, "days");
         const durationInSeconds = Number(formData.duration) * 24 * 60 * 60;
+        console.log("⏰ Duration in seconds:", durationInSeconds);
 
-        // Validate duration (contract requires 1 hour to 365 days)
+        // Pre-flight validation: Check all contract state before sending transaction
+        console.log("🔍 Pre-flight validation: Checking contract state...");
+        try {
+          const { ethers: ethersLib } = await import("ethers");
+          const [isPaused, isJobCreationPaused, nextEscrowId] =
+            await Promise.all([
+              escrowContract.call("paused"),
+              escrowContract.call("jobCreationPaused"),
+              escrowContract.call("nextEscrowId"),
+            ]);
+
+          console.log("🔍 Contract state check:", {
+            isPaused,
+            isJobCreationPaused,
+            nextEscrowId: nextEscrowId.toString(),
+            beneficiary: beneficiaryAddress,
+            isOpenJob: formData.isOpenJob,
+            arbitersCount: arbiters.length,
+            requiredConfirmations,
+            milestoneCount: milestoneAmountsInWei.length,
+            duration: durationInSeconds,
+            totalAmount: ethersLib.formatEther(totalAmountInWei),
+          });
+
+          if (isPaused) {
+            throw new Error(
+              "❌ Contract is paused. Please unpause from Admin page."
+            );
+          }
+          if (isJobCreationPaused) {
+            throw new Error(
+              "❌ Job creation is paused. Please unpause from Admin page."
+            );
+          }
+          if (arbiters.length === 0) {
+            throw new Error("❌ At least one arbiter is required.");
+          }
+          if (arbiters.length > 5) {
+            throw new Error("❌ Too many arbiters (max 5).");
+          }
+          if (
+            (requiredConfirmations as number) === 0 ||
+            (requiredConfirmations as number) > arbiters.length
+          ) {
+            throw new Error(
+              `❌ Invalid required confirmations: ${requiredConfirmations} (must be 1-${arbiters.length}).`
+            );
+          }
+          if (milestoneAmountsInWei.length === 0) {
+            throw new Error("❌ At least one milestone is required.");
+          }
+          if (milestoneAmountsInWei.length > 20) {
+            throw new Error("❌ Too many milestones (max 20).");
+          }
+          if (durationInSeconds < 3600 || durationInSeconds > 31536000) {
+            throw new Error(
+              `❌ Invalid duration: ${durationInSeconds} seconds (must be 3600-31536000).`
+            );
+          }
+          if (
+            !formData.projectTitle ||
+            formData.projectTitle.trim().length === 0
+          ) {
+            throw new Error("❌ Project title is required.");
+          }
+
+          // Check each milestone amount
+          for (let i = 0; i < milestoneAmountsInWei.length; i++) {
+            if (BigInt(milestoneAmountsInWei[i]) === BigInt(0)) {
+              throw new Error(`❌ Milestone ${i + 1} has zero amount.`);
+            }
+          }
+
+          console.log("✅ All pre-flight validations passed!");
+        } catch (validationError: any) {
+          console.error("❌ Pre-flight validation failed:", validationError);
+          throw validationError;
+        }
+
+        // Validate duration (contract requires 1 hour to 365 days) - already checked above but keeping for safety
         if (durationInSeconds < 3600 || durationInSeconds > 31536000) {
           throw new Error(
             "Invalid duration. Duration must be between 1 hour and 365 days."
@@ -659,6 +769,10 @@ export default function CreateEscrowPage() {
         const maxTxAttempts = 3;
 
         while (txAttempts < maxTxAttempts) {
+          console.log(
+            "🚀 About to attempt transaction, attempt:",
+            txAttempts + 1
+          );
           try {
             // Check if we should use Smart Account for gasless transaction
             if (isSmartAccountReady) {
@@ -714,17 +828,39 @@ export default function CreateEscrowPage() {
                 formData.projectDescription, // projectDescription parameter (string)
               ];
 
+              // Calculate total from milestone amounts to verify it matches value
+              const totalFromMilestones = milestoneAmountsInWei.reduce(
+                (sum, amt) => sum + BigInt(amt),
+                BigInt(0)
+              );
+              const valueInWei = BigInt(totalAmountInWei);
+
               console.log("📤 Calling createEscrowNative with params:", {
                 value: valueInHex,
+                valueInWei: valueInWei.toString(),
+                totalFromMilestones: totalFromMilestones.toString(),
+                valueMatches: valueInWei === totalFromMilestones,
                 beneficiary: params[0],
                 arbiters: params[1],
                 requiredConfirmations: params[2],
                 milestoneAmounts: params[3],
+                milestoneAmountsSum: totalFromMilestones.toString(),
                 milestoneDescriptions: params[4],
                 duration: params[5],
                 title: params[6],
                 description: params[7],
               });
+
+              if (valueInWei !== totalFromMilestones) {
+                const { ethers } = await import("ethers");
+                throw new Error(
+                  `Value mismatch! msg.value (${ethers.formatEther(
+                    valueInWei
+                  )} ETH) must exactly equal total milestone amounts (${ethers.formatEther(
+                    totalFromMilestones
+                  )} ETH)`
+                );
+              }
 
               txHash = await escrowContract.send(
                 "createEscrowNative",
@@ -741,17 +877,72 @@ export default function CreateEscrowPage() {
           } catch (txError: any) {
             txAttempts++;
 
+            // Try to extract revert reason
+            let revertReason = "Unknown error";
+            try {
+              const { ethers } = await import("ethers");
+              if (txError.data) {
+                const errorData = txError.data;
+                if (
+                  typeof errorData === "string" &&
+                  errorData.startsWith("0x")
+                ) {
+                  try {
+                    const decoded = ethers.toUtf8String(
+                      "0x" + errorData.slice(-64)
+                    );
+                    if (decoded && decoded.trim().length > 0) {
+                      revertReason = decoded.trim();
+                    }
+                  } catch (_) {
+                    if (errorData.length > 10) {
+                      revertReason = `Error data: ${errorData.slice(0, 20)}...`;
+                    }
+                  }
+                }
+              }
+              if (txError.reason) {
+                revertReason = txError.reason;
+              }
+              if (txError.message) {
+                const dataMatch = txError.message.match(/data[=:]"?([^"]+)"?/);
+                if (
+                  dataMatch &&
+                  dataMatch[1] &&
+                  dataMatch[1] !== "0x" &&
+                  dataMatch[1] !== ""
+                ) {
+                  try {
+                    const decoded = ethers.toUtf8String(
+                      "0x" + dataMatch[1].slice(-64)
+                    );
+                    if (decoded && decoded.trim().length > 0) {
+                      revertReason = decoded.trim();
+                    }
+                  } catch (_) {}
+                }
+              }
+            } catch (decodeError) {
+              console.warn("Could not decode revert reason:", decodeError);
+            }
+
             if (txAttempts >= maxTxAttempts) {
               // Provide better error message
               const errorMessage =
                 txError.message || String(txError) || "Unknown error";
               console.error("❌ Final transaction error:", {
                 message: errorMessage,
+                revertReason: revertReason,
+                errorData: txError.data,
                 error: txError,
                 beneficiary: beneficiaryAddress,
                 isOpenJob: formData.isOpenJob,
                 totalAmount: totalAmountInWei,
                 arbiters,
+                fullError: JSON.stringify(
+                  txError,
+                  Object.getOwnPropertyNames(txError)
+                ),
               });
 
               if (
@@ -760,7 +951,9 @@ export default function CreateEscrowPage() {
               ) {
                 // Check common revert reasons
                 let specificError =
-                  "Transaction failed. The contract reverted.";
+                  revertReason !== "Unknown error"
+                    ? `Transaction failed: ${revertReason}`
+                    : "Transaction failed. The contract reverted.";
 
                 if (
                   errorMessage.includes("ArbiterNotAuthorized") ||
@@ -783,12 +976,20 @@ export default function CreateEscrowPage() {
                   specificError =
                     "❌ Contract is paused. Please unpause from Admin page.";
                 } else if (
+                  errorMessage.includes("INV_AMT") ||
+                  revertReason.includes("INV_AMT") ||
                   errorMessage.includes("InvalidAmount") ||
-                  errorMessage.includes("amount") ||
-                  errorMessage.includes("AMOUNT")
+                  (errorMessage.includes("amount") &&
+                    !errorMessage.includes("milestone"))
                 ) {
-                  specificError =
-                    "❌ Invalid amount. The contract checks: 1) Total milestone amounts must exactly match project budget, 2) Amounts must be greater than 0, 3) msg.value must exactly match total milestone amounts. Check console logs for exact values.";
+                  // Check if this is for ERC20 token escrow
+                  if (formData.token !== ZERO_ADDRESS) {
+                    specificError =
+                      "❌ Token transfer failed (INV_AMT). This usually means:\n1. Insufficient token balance - You don't have enough tokens\n2. Insufficient allowance - You need to approve the contract to spend your tokens\n\nPlease check:\n- Your token balance is sufficient\n- You've approved the contract to spend tokens (check token contract on Arbiscan)";
+                  } else {
+                    specificError =
+                      "❌ Invalid amount. The contract checks: 1) Total milestone amounts must exactly match project budget, 2) Amounts must be greater than 0, 3) msg.value must exactly match total milestone amounts. Check console logs for exact values.";
+                  }
                 } else if (
                   errorMessage.includes("InvalidDuration") ||
                   errorMessage.includes("duration") ||
@@ -1014,32 +1215,323 @@ export default function CreateEscrowPage() {
             router.push(isOpenJob ? "/jobs" : "/dashboard");
           }, 2000);
         } else {
-          // Transaction failed
-          throw new Error("Transaction failed on blockchain");
+          // Transaction failed - try to get revert reason by simulating the call
+          let revertReason = "Unknown error";
+          try {
+            const { ethers } = await import("ethers");
+            const provider = new ethers.JsonRpcProvider(
+              "https://sepolia-rollup.arbitrum.io/rpc"
+            );
+            const contractAddress = CONTRACTS.SECUREFLOW_ESCROW;
+            const iface = new ethers.Interface(SECUREFLOW_ABI);
+
+            // Reconstruct parameters from formData
+            const totalAmountInWei = BigInt(
+              Math.floor(Number.parseFloat(formData.totalBudget) * 10 ** 18)
+            );
+            const milestoneAmountsInWei = formData.milestones.map((m) => {
+              const amount = Number.parseFloat(m.amount);
+              return BigInt(Math.floor(amount * 10 ** 18)).toString();
+            });
+            const milestoneDescriptions = formData.milestones.map(
+              (m) => m.description
+            );
+            const durationInSeconds = Number(formData.duration) * 24 * 60 * 60;
+            const defaultArbiter = "0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41";
+            const arbiters = [defaultArbiter];
+            const requiredConfirmations = 1;
+            const valueInHex = `0x${totalAmountInWei.toString(16)}`;
+
+            const functionName =
+              formData.token === ZERO_ADDRESS
+                ? "createEscrowNative"
+                : "createEscrow";
+            const params =
+              formData.token === ZERO_ADDRESS
+                ? [
+                    beneficiaryAddress,
+                    arbiters,
+                    requiredConfirmations,
+                    milestoneAmountsInWei,
+                    milestoneDescriptions,
+                    durationInSeconds,
+                    formData.projectTitle,
+                    formData.projectDescription,
+                  ]
+                : [
+                    beneficiaryAddress,
+                    arbiters,
+                    requiredConfirmations,
+                    milestoneAmountsInWei,
+                    milestoneDescriptions,
+                    formData.token,
+                    durationInSeconds,
+                    formData.projectTitle,
+                    formData.projectDescription,
+                  ];
+
+            const data = iface.encodeFunctionData(functionName, params);
+            const value = formData.token === ZERO_ADDRESS ? valueInHex : "0x0";
+
+            // Simulate the call to get revert reason
+            try {
+              await provider.call({
+                to: contractAddress,
+                data,
+                value,
+                from: wallet.address,
+              });
+            } catch (simError: any) {
+              // Extract revert reason from simulation error
+              if (simError.data) {
+                const errorData = simError.data;
+                if (
+                  typeof errorData === "string" &&
+                  errorData.startsWith("0x") &&
+                  errorData.length > 10
+                ) {
+                  try {
+                    // Try to decode as UTF-8 (Stylus error codes like "UNAUTH", "PAUSED", etc.)
+                    // The error data might be padded, so try different slice positions
+                    let decoded = "";
+                    for (let offset = 0; offset < 32; offset += 2) {
+                      try {
+                        const slice = errorData.slice(2 + offset); // Skip '0x' and try different offsets
+                        if (slice.length >= 2) {
+                          decoded = ethers.toUtf8String("0x" + slice);
+                          if (
+                            decoded &&
+                            decoded.trim().length > 0 &&
+                            /^[A-Z_]+$/.test(decoded.trim())
+                          ) {
+                            revertReason = decoded.trim();
+                            break;
+                          }
+                        }
+                      } catch (_) {}
+                    }
+
+                    // If UTF-8 decode didn't work, try direct hex to ASCII
+                    if (!revertReason || revertReason === "Unknown error") {
+                      try {
+                        const hexStr = errorData.slice(2); // Remove '0x'
+                        let asciiStr = "";
+                        for (let i = 0; i < hexStr.length; i += 2) {
+                          const hex = hexStr.substr(i, 2);
+                          const charCode = parseInt(hex, 16);
+                          if (charCode >= 32 && charCode <= 126) {
+                            asciiStr += String.fromCharCode(charCode);
+                          } else {
+                            break;
+                          }
+                        }
+                        if (asciiStr.length > 0) {
+                          revertReason = asciiStr;
+                        } else {
+                          revertReason = `Error hex: ${errorData.slice(
+                            0,
+                            42
+                          )}...`;
+                        }
+                      } catch (_) {
+                        revertReason = `Error hex: ${errorData.slice(
+                          0,
+                          42
+                        )}...`;
+                      }
+                    }
+                  } catch (_) {
+                    revertReason = `Error hex: ${errorData.slice(0, 42)}...`;
+                  }
+                }
+              }
+              if (simError.reason) {
+                revertReason = simError.reason;
+              }
+              if (simError.message) {
+                const dataMatch = simError.message.match(/data[=:]"?([^"]+)"?/);
+                if (
+                  dataMatch &&
+                  dataMatch[1] &&
+                  dataMatch[1] !== "0x" &&
+                  dataMatch[1] !== ""
+                ) {
+                  try {
+                    const decoded = ethers.toUtf8String(
+                      "0x" + dataMatch[1].slice(-64)
+                    );
+                    if (decoded && decoded.trim().length > 0) {
+                      revertReason = decoded.trim();
+                    }
+                  } catch (_) {}
+                }
+              }
+              // Map error codes to user-friendly messages
+              const errorMessages: { [key: string]: string } = {
+                INV_AMT:
+                  formData.token !== ZERO_ADDRESS
+                    ? "Token transfer failed. You need to:\n1. Have sufficient token balance\n2. Approve the contract to spend your tokens (call approve() on the token contract)"
+                    : "Invalid amount - check that milestone amounts match the total budget exactly",
+                UNAUTH:
+                  "Unauthorized - you don't have permission for this action",
+                PAUSED: "Contract is paused - please unpause from Admin page",
+                JOB_PAUSED:
+                  "Job creation is paused - please unpause from Admin page",
+                ARB_NW:
+                  "Arbiter not authorized - please authorize arbiter from Admin page",
+                TOKEN_NW:
+                  "Token not whitelisted - please whitelist token from Admin page",
+                VALUE_MIS:
+                  "Value mismatch - ETH sent doesn't match total milestone amounts",
+                BENEF_EQ_DEP: "Beneficiary cannot be the same as depositor",
+                EMPTY_MS:
+                  "Empty milestones - at least one milestone is required",
+                ZERO_MS_AMT:
+                  "Zero milestone amount - all milestone amounts must be greater than 0",
+                MS_COUNT_MIS:
+                  "Milestone count mismatch - amounts and descriptions must match",
+                EMPTY_TITLE: "Empty project title - project title is required",
+              };
+
+              const friendlyMessage =
+                errorMessages[revertReason] || revertReason;
+
+              console.error(
+                "❌ Transaction simulation error (this shows why it failed):",
+                {
+                  revertReason,
+                  friendlyMessage,
+                  errorCode: revertReason,
+                  errorData: simError.data,
+                  errorDataString:
+                    typeof simError.data === "string"
+                      ? simError.data
+                      : JSON.stringify(simError.data),
+                  message: simError.message,
+                  fullError: simError,
+                  errorKeys: Object.keys(simError),
+                }
+              );
+
+              // Update revertReason with friendly message
+              revertReason = friendlyMessage;
+            }
+          } catch (decodeError) {
+            console.warn(
+              "Could not decode revert reason from receipt:",
+              decodeError
+            );
+          }
+
+          console.error("❌ Transaction failed on blockchain:", {
+            txHash,
+            receipt,
+            revertReason,
+          });
+
+          throw new Error(`Transaction failed on blockchain: ${revertReason}`);
         }
       }
     } catch (error: any) {
       let errorMessage = "Failed to create escrow";
+      let revertReason = "Unknown error";
 
-      if (error.message?.includes("insufficient funds")) {
-        errorMessage = "Insufficient funds. Please check your balance.";
-      } else if (error.message?.includes("gas")) {
-        errorMessage = "Gas estimation failed. Please try again.";
+      // Try to extract revert reason
+      try {
+        const { ethers } = await import("ethers");
+        if (error.data) {
+          const errorData = error.data;
+          if (typeof errorData === "string" && errorData.startsWith("0x")) {
+            try {
+              const decoded = ethers.toUtf8String("0x" + errorData.slice(-64));
+              if (decoded && decoded.trim().length > 0) {
+                revertReason = decoded.trim();
+              }
+            } catch (_) {
+              if (errorData.length > 10) {
+                revertReason = `Error data: ${errorData.slice(0, 20)}...`;
+              }
+            }
+          }
+        }
+        if (error.reason) {
+          revertReason = error.reason;
+        }
+        if (error.message) {
+          const dataMatch = error.message.match(/data[=:]"?([^"]+)"?/);
+          if (
+            dataMatch &&
+            dataMatch[1] &&
+            dataMatch[1] !== "0x" &&
+            dataMatch[1] !== ""
+          ) {
+            try {
+              const decoded = ethers.toUtf8String(
+                "0x" + dataMatch[1].slice(-64)
+              );
+              if (decoded && decoded.trim().length > 0) {
+                revertReason = decoded.trim();
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (decodeError) {
+        console.warn(
+          "Could not decode revert reason in outer catch:",
+          decodeError
+        );
+      }
+
+      if (
+        error.message?.includes("insufficient") ||
+        error.message?.includes("Insufficient")
+      ) {
+        // Use the original error message if it's about insufficient balance
+        errorMessage =
+          error.message.includes("ETH balance") ||
+          error.message.includes("token balance")
+            ? error.message
+            : "Insufficient funds. Please check your balance.";
+      } else if (
+        error.message?.includes("gas") ||
+        error.message?.includes("estimateGas")
+      ) {
+        errorMessage =
+          revertReason !== "Unknown error"
+            ? `Gas estimation failed: ${revertReason}`
+            : "Gas estimation failed. The contract may be reverting. Common causes:\n1. Contract is paused (check Admin page)\n2. Arbiter not authorized (check Admin → Arbiter Management)\n3. Invalid parameters (check console logs)\n4. Contract not initialized\n\nThe transaction will still be attempted with a fallback gas limit, but it may fail if the contract is reverting.";
       } else if (error.message?.includes("revert")) {
-        errorMessage = "Transaction reverted. Please check your parameters.";
+        errorMessage =
+          revertReason !== "Unknown error"
+            ? `Transaction reverted: ${revertReason}`
+            : "Transaction reverted. Please check your parameters.";
       } else if (error.message?.includes("user rejected")) {
         errorMessage = "Transaction was rejected by user.";
       } else if (error.message?.includes("timeout")) {
         errorMessage = "Transaction timeout. Please try again.";
       } else if (error.message?.includes("Internal JSON-RPC error")) {
         errorMessage =
-          "Network error occurred. Please try again - this usually works on the second attempt.";
+          revertReason !== "Unknown error"
+            ? `Network error: ${revertReason}`
+            : "Network error occurred. Please try again - this usually works on the second attempt.";
       } else if (error.code === -32603) {
         errorMessage =
-          "RPC error occurred. Please try again - this usually works on the second attempt.";
+          revertReason !== "Unknown error"
+            ? `RPC error: ${revertReason}`
+            : "RPC error occurred. Please try again - this usually works on the second attempt.";
       } else {
-        errorMessage = error.message || "Failed to create escrow";
+        errorMessage =
+          revertReason !== "Unknown error"
+            ? `${error.message || "Failed to create escrow"}: ${revertReason}`
+            : error.message || "Failed to create escrow";
       }
+
+      console.error("❌ Escrow creation error with revert reason:", {
+        errorMessage,
+        revertReason,
+        errorData: error.data,
+        fullError: error,
+      });
 
       toast({
         title: "Creation failed",

@@ -27,8 +27,20 @@ export function useFreelancerStatus() {
       }
 
       // Get total number of escrows
-      const totalEscrows = await contract.call("nextEscrowId");
-      const escrowCount = Number(totalEscrows);
+      let totalEscrows;
+      try {
+        totalEscrows = await contract.call("nextEscrowId");
+      } catch (error: any) {
+        // Contract might not be initialized or there's an issue
+        console.warn(
+          "Failed to get nextEscrowId, contract may not be initialized:",
+          error
+        );
+        setIsFreelancer(false);
+        setLoading(false);
+        return;
+      }
+      const escrowCount = Number(totalEscrows || 0);
 
       // Check if current wallet is beneficiary of any escrow
       if (escrowCount > 1) {
