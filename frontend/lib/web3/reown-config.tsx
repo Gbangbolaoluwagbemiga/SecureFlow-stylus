@@ -67,6 +67,14 @@ const initializeAppKit = () => {
     return;
   }
 
+  // Prevent conflicts with existing window.ethereum (e.g., MetaMask)
+  // AppKit should not try to redefine window.ethereum if it already exists
+  const hasExistingEthereum =
+    window.ethereum &&
+    (window.ethereum.isMetaMask ||
+      window.ethereum.isCoinbaseWallet ||
+      window.ethereum.providers?.length > 0);
+
   // Create metadata with current origin (dynamic)
   const metadata = {
     name: "SecureFlow",
@@ -94,11 +102,16 @@ const initializeAppKit = () => {
     });
     appKitInitialized = true;
     console.log("✅ AppKit initialized successfully");
+
+    if (hasExistingEthereum) {
+      console.log("ℹ️ Existing wallet provider detected, AppKit will use it");
+    }
   } catch (error: any) {
     // If AppKit is already initialized, that's fine
     if (
       error?.message?.includes("already") ||
-      error?.message?.includes("initialized")
+      error?.message?.includes("initialized") ||
+      error?.message?.includes("redefine")
     ) {
       appKitInitialized = true;
       console.log("✅ AppKit already initialized");
@@ -109,25 +122,25 @@ const initializeAppKit = () => {
   }
 };
 
-// Initialize immediately if we're on the client
-// This runs when the module is first imported on the client side
-if (typeof window !== "undefined") {
-  // Use requestIdleCallback or setTimeout to ensure DOM is ready
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initializeAppKit);
-  } else {
-    // DOM already loaded, initialize immediately
-    initializeAppKit();
-  }
-}
+// Don't initialize at module level - only initialize in the AppKit component
+// This prevents multiple initialization attempts and conflicts
 
 export function AppKit({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Force initialization on mount (handles SSR/hydration)
-    initializeAppKit();
-    setMounted(true);
+    // Only initialize once on mount (handles SSR/hydration)
+    // Use a small delay to ensure DOM is ready and avoid conflicts
+    const timer = setTimeout(() => {
+      try {
+        initializeAppKit();
+      } catch (error) {
+        console.error("Failed to initialize AppKit:", error);
+      }
+      setMounted(true);
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, []);
 
   // Only render children after mount (client-side only)

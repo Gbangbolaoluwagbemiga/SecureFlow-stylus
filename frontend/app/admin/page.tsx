@@ -36,10 +36,12 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [contractOwner, setContractOwner] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [actionType, setActionType] = useState<"pause" | "unpause" | null>(
-    null
-  );
+  const [actionType, setActionType] = useState<
+    "pause" | "unpause" | "init" | null
+  >(null);
   const [testMode, setTestMode] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [needsInitialization, setNeedsInitialization] = useState(false);
   const [contractStats, setContractStats] = useState({
     platformFeeBP: 0,
     totalEscrows: 0,
@@ -59,17 +61,25 @@ export default function AdminPage() {
   const fetchContractOwner = async () => {
     try {
       const contract = getContract(CONTRACTS.SECUREFLOW_ESCROW, SECUREFLOW_ABI);
-      const owner = await contract.owner();
+      const owner = await contract.call("owner");
       setContractOwner(owner);
-    } catch (error) {}
+
+      // Check if contract needs initialization (owner is zero address)
+      const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+      const ownerStr = String(owner).toLowerCase();
+      setNeedsInitialization(ownerStr === ZERO_ADDRESS || ownerStr === "");
+    } catch (error) {
+      console.error("Error fetching contract owner:", error);
+    }
   };
 
   const fetchContractStats = async () => {
     try {
       const contract = getContract(CONTRACTS.SECUREFLOW_ESCROW, SECUREFLOW_ABI);
 
-      // Fetch platform fee
-      const platformFeeBP = await contract.call("platformFeeBP");
+      // Platform fee - Stylus contract doesn't implement this yet, use default
+      // TODO: Add platformFeeBP to Stylus contract if needed
+      const platformFeeBP = 0; // Default to 0% (no fee)
 
       // Fetch total escrows count
       const totalEscrows = await contract.call("nextEscrowId");
@@ -158,6 +168,66 @@ export default function AdminPage() {
       const contract = getContract(CONTRACTS.SECUREFLOW_ESCROW, SECUREFLOW_ABI);
 
       switch (actionType) {
+        case "init":
+          setIsInitializing(true);
+          try {
+            // Check if already initialized before attempting
+            const currentOwner = await contract.call("owner");
+            const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+            const ownerStr = String(currentOwner).toLowerCase();
+
+            if (ownerStr !== ZERO_ADDRESS && ownerStr !== "") {
+              toast({
+                title: "Already initialized",
+                description: `Contract is already initialized. Owner: ${currentOwner.slice(
+                  0,
+                  6
+                )}...${currentOwner.slice(-4)}`,
+                variant: "default",
+              });
+              await fetchContractOwner();
+              setDialogOpen(false);
+              setIsInitializing(false);
+              return;
+            }
+
+            // Call init() function - it takes no parameters
+            // This is a ONE-TIME operation that persists on-chain permanently
+            await contract.send("init", "no-value");
+            toast({
+              title: "✅ Contract initialized successfully!",
+              description:
+                "The contract has been initialized permanently. You are now the owner. This state persists on-chain and won't need to be done again.",
+            });
+            // Refresh owner status
+            await fetchContractOwner();
+            setNeedsInitialization(false);
+          } catch (error: any) {
+            // Check if error is because contract is already initialized
+            if (
+              error.message?.includes("already") ||
+              error.message?.includes("initialized")
+            ) {
+              toast({
+                title: "Already initialized",
+                description:
+                  "Contract is already initialized. No action needed.",
+                variant: "default",
+              });
+              await fetchContractOwner();
+              setNeedsInitialization(false);
+            } else {
+              toast({
+                title: "Initialization failed",
+                description: error.message || "Failed to initialize contract",
+                variant: "destructive",
+              });
+            }
+          } finally {
+            setIsInitializing(false);
+            setDialogOpen(false);
+          }
+          return;
         case "pause":
           // Check if contract is already paused
           const currentPausedStatusForPause = await contract.call("paused");
@@ -264,6 +334,103 @@ export default function AdminPage() {
     }
   };
 
+  const handleWhitelistToken = async (tokenAddress: string) => {
+    if (needsInitialization) {
+      toast({
+        title: "Contract not initialized",
+        description: "Please initialize the contract first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const contract = getContract(CONTRACTS.SECUREFLOW_ESCROW, SECUREFLOW_ABI);
+
+      // Check if already whitelisted
+      const isWhitelisted = await contract.call(
+        "whitelistedTokens",
+        tokenAddress
+      );
+      if (isWhitelisted) {
+        toast({
+          title: "Already whitelisted",
+          description: "This token is already whitelisted",
+          variant: "default",
+        });
+        return;
+      }
+
+      // Whitelist the token
+      await contract.send("whitelistToken", "no-value", tokenAddress);
+
+      toast({
+        title: "Token whitelisted",
+        description: `Token ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(
+          -4
+        )} has been whitelisted successfully`,
+      });
+
+      // Refresh stats
+      await fetchContractStats();
+    } catch (error: any) {
+      toast({
+        title: "Whitelist failed",
+        description: error.message || "Failed to whitelist token",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAuthorizeArbiter = async (arbiterAddress: string) => {
+    if (needsInitialization) {
+      toast({
+        title: "Contract not initialized",
+        description: "Please initialize the contract first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const contract = getContract(CONTRACTS.SECUREFLOW_ESCROW, SECUREFLOW_ABI);
+
+      // Check if already authorized
+      const isAuthorized = await contract.call(
+        "authorizedArbiters",
+        arbiterAddress
+      );
+      if (isAuthorized) {
+        toast({
+          title: "Already authorized",
+          description: "This arbiter is already authorized",
+          variant: "default",
+        });
+        return;
+      }
+
+      // Authorize the arbiter
+      await contract.send("authorizeArbiter", "no-value", arbiterAddress);
+
+      toast({
+        title: "Arbiter authorized",
+        description: `Arbiter ${arbiterAddress.slice(
+          0,
+          6
+        )}...${arbiterAddress.slice(-4)} has been authorized successfully`,
+      });
+
+      // Refresh stats
+      await fetchContractStats();
+    } catch (error: any) {
+      toast({
+        title: "Authorization failed",
+        description: error.message || "Failed to authorize arbiter",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getDialogContent = () => {
     const testModePrefix = testMode ? "🧪 Test Mode: " : "";
     const testModeSuffix = testMode ? " (Simulated)" : "";
@@ -287,6 +454,17 @@ export default function AdminPage() {
             : "This will resume all escrow operations. Users will be able to interact with escrows again.",
           icon: Play,
           confirmText: testMode ? "Simulate Unpause" : "Unpause Contract",
+          variant: "default" as const,
+        };
+      case "init":
+        return {
+          title: "Initialize Contract (One-Time)",
+          description:
+            "This will initialize the contract permanently and set you as the owner. This is a ONE-TIME operation that persists on the blockchain. After initialization, you won't need to do this again, even after page reloads.",
+          icon: Shield,
+          confirmText: isInitializing
+            ? "Initializing..."
+            : "Initialize Contract",
           variant: "default" as const,
         };
       default:
@@ -473,7 +651,40 @@ export default function AdminPage() {
             </div>
           </Card>
 
-          {isPaused && (
+          {needsInitialization && (
+            <Alert variant="destructive" className="mb-8">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Contract Not Initialized</AlertTitle>
+              <AlertDescription className="space-y-3">
+                <p>
+                  The contract has not been initialized yet. You must initialize
+                  it
+                  <strong className="font-semibold"> once</strong> before using
+                  admin functions. This will set you as the contract owner.
+                </p>
+                <div className="bg-muted/50 p-3 rounded-lg text-sm space-y-1">
+                  <p className="font-semibold">ℹ️ One-Time Operation:</p>
+                  <p className="text-muted-foreground">
+                    Initialization is permanent and persists on the blockchain.
+                    After initialization, you won't need to do this again, even
+                    after page reloads.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => openDialog("init")}
+                  variant="default"
+                  disabled={isInitializing}
+                  className="mt-2"
+                >
+                  {isInitializing
+                    ? "Initializing..."
+                    : "Initialize Contract (One-Time)"}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {isPaused && !needsInitialization && (
             <Alert variant="destructive" className="mb-8">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Contract Paused</AlertTitle>
@@ -523,6 +734,142 @@ export default function AdminPage() {
 
           <DisputeResolution onDisputeResolved={fetchContractStats} />
 
+          {/* Token Management Section */}
+          <Card className="glass border-primary/20 p-6 mb-8">
+            <h2 className="text-2xl font-bold mb-6">Token Management</h2>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="tokenAddress">Token Address</Label>
+                <div className="flex gap-2 mt-2">
+                  <Input
+                    id="tokenAddress"
+                    placeholder="0x..."
+                    className="flex-1"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const input = e.target as HTMLInputElement;
+                        const address = input.value.trim();
+                        if (address && address.match(/^0x[a-fA-F0-9]{40}$/)) {
+                          handleWhitelistToken(address);
+                          input.value = "";
+                        }
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={() => {
+                      const input = document.getElementById(
+                        "tokenAddress"
+                      ) as HTMLInputElement;
+                      const address = input.value.trim();
+                      if (address && address.match(/^0x[a-fA-F0-9]{40}$/)) {
+                        handleWhitelistToken(address);
+                        input.value = "";
+                      } else {
+                        toast({
+                          title: "Invalid address",
+                          description: "Please enter a valid token address",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    disabled={needsInitialization}
+                  >
+                    Whitelist Token
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Enter a token address to whitelist it. Only whitelisted tokens
+                  can be used in escrows.
+                </p>
+              </div>
+
+              {/* Quick whitelist for Mock ERC20 */}
+              <div className="bg-muted/50 p-3 rounded-lg">
+                <p className="text-sm font-semibold mb-2">Quick Actions:</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleWhitelistToken(CONTRACTS.MOCK_ERC20)}
+                  disabled={needsInitialization}
+                  className="w-full"
+                >
+                  Whitelist Mock ERC20 ({CONTRACTS.MOCK_ERC20.slice(0, 10)}...)
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          {/* Arbiter Management Section */}
+          <Card className="glass border-primary/20 p-6 mb-8">
+            <h2 className="text-2xl font-bold mb-6">Arbiter Management</h2>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="arbiterAddress">Arbiter Address</Label>
+                <div className="flex gap-2 mt-2">
+                  <Input
+                    id="arbiterAddress"
+                    placeholder="0x..."
+                    className="flex-1"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const input = e.target as HTMLInputElement;
+                        const address = input.value.trim();
+                        if (address && address.match(/^0x[a-fA-F0-9]{40}$/)) {
+                          handleAuthorizeArbiter(address);
+                          input.value = "";
+                        }
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={() => {
+                      const input = document.getElementById(
+                        "arbiterAddress"
+                      ) as HTMLInputElement;
+                      const address = input.value.trim();
+                      if (address && address.match(/^0x[a-fA-F0-9]{40}$/)) {
+                        handleAuthorizeArbiter(address);
+                        input.value = "";
+                      } else {
+                        toast({
+                          title: "Invalid address",
+                          description: "Please enter a valid arbiter address",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    disabled={needsInitialization}
+                  >
+                    Authorize Arbiter
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Authorize an arbiter address. Only authorized arbiters can be
+                  used in escrows.
+                </p>
+              </div>
+
+              {/* Quick authorize for default arbiter */}
+              <div className="bg-muted/50 p-3 rounded-lg">
+                <p className="text-sm font-semibold mb-2">Quick Actions:</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    handleAuthorizeArbiter(
+                      "0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41"
+                    )
+                  }
+                  disabled={needsInitialization}
+                  className="w-full"
+                >
+                  Authorize Default Arbiter (Your Wallet)
+                </Button>
+              </div>
+            </div>
+          </Card>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <Card className="glass border-primary/20 p-6">
               <div className="flex items-start gap-4 mb-4">
@@ -548,6 +895,7 @@ export default function AdminPage() {
                 onClick={() => openDialog(isPaused ? "unpause" : "pause")}
                 variant={isPaused ? "default" : "destructive"}
                 className="w-full gap-2"
+                disabled={needsInitialization}
               >
                 {isPaused ? (
                   <>
@@ -561,6 +909,11 @@ export default function AdminPage() {
                   </>
                 )}
               </Button>
+              {needsInitialization && (
+                <p className="text-xs text-muted-foreground mt-2 text-center">
+                  Initialize contract first to enable admin functions
+                </p>
+              )}
             </Card>
           </div>
 

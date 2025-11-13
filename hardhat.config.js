@@ -59,6 +59,16 @@ module.exports = {
       maxFeePerGas: 10000000000, // 10 gwei
       maxPriorityFeePerGas: 1000000000, // 1 gwei
     },
+    arbitrumSepolia: {
+      url:
+        process.env.ARBITRUM_SEPOLIA_RPC ||
+        "https://sepolia-rollup.arbitrum.io/rpc",
+      accounts:
+        process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+      chainId: 421614, // Arbitrum Sepolia testnet chain ID
+      gas: 8000000,
+      gasPrice: 100000000, // 0.1 gwei
+    },
   },
   paths: {
     sources: "./contracts",

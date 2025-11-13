@@ -6,7 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, XCircle } from "lucide-react";
+import { useWhitelistedTokens } from "@/hooks/use-whitelisted-tokens";
+import { CONTRACTS, ZERO_ADDRESS } from "@/lib/web3/config";
+import { useState, useEffect } from "react";
 
 interface ProjectDetailsStepProps {
   formData: {
@@ -37,6 +40,41 @@ export function ProjectDetailsStep({
   isContractPaused,
   errors = {},
 }: ProjectDetailsStepProps) {
+  const {
+    whitelistedTokens,
+    loading: tokensLoading,
+    checkTokenWhitelisted,
+  } = useWhitelistedTokens();
+  const [tokenWhitelisted, setTokenWhitelisted] = useState<boolean | null>(
+    null
+  );
+  const [checkingToken, setCheckingToken] = useState(false);
+
+  // Check if current token is whitelisted when it changes (with debouncing)
+  useEffect(() => {
+    if (formData.token && !formData.useNativeToken) {
+      // Debounce the check to avoid too frequent API calls
+      const timeoutId = setTimeout(() => {
+        setCheckingToken(true);
+        checkTokenWhitelisted(formData.token)
+          .then((isWhitelisted) => {
+            setTokenWhitelisted(isWhitelisted);
+          })
+          .catch(() => {
+            setTokenWhitelisted(null);
+          })
+          .finally(() => {
+            setCheckingToken(false);
+          });
+      }, 800); // Wait 800ms after user stops typing
+
+      return () => clearTimeout(timeoutId);
+    } else {
+      setTokenWhitelisted(null);
+      setCheckingToken(false);
+    }
+  }, [formData.token, formData.useNativeToken, checkTokenWhitelisted]);
+
   return (
     <Card className="glass border-primary/20 p-6">
       <CardHeader>
@@ -185,8 +223,40 @@ export function ProjectDetailsStep({
           </div>
 
           {!formData.useNativeToken && (
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="tokenAddress">Token Address *</Label>
+
+              {/* Whitelisted tokens dropdown */}
+              {whitelistedTokens.length > 0 && (
+                <div className="mb-3">
+                  <Label className="text-xs text-muted-foreground mb-2 block">
+                    Whitelisted Tokens:
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {whitelistedTokens.map((token) => (
+                      <Button
+                        key={token.address}
+                        type="button"
+                        variant={
+                          formData.token === token.address
+                            ? "default"
+                            : "outline"
+                        }
+                        size="sm"
+                        onClick={() => onUpdate({ token: token.address })}
+                        className="text-xs"
+                      >
+                        {token.symbol || token.name}
+                        <span className="ml-1 text-[10px] opacity-70">
+                          ({token.address.slice(0, 6)}...
+                          {token.address.slice(-4)})
+                        </span>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <Input
                 id="tokenAddress"
                 value={formData.token}
@@ -197,17 +267,53 @@ export function ProjectDetailsStep({
                 className={
                   errors.tokenAddress
                     ? "border-red-500 focus:border-red-500"
+                    : tokenWhitelisted === false
+                    ? "border-yellow-500 focus:border-yellow-500"
+                    : tokenWhitelisted === true
+                    ? "border-green-500 focus:border-green-500"
                     : ""
                 }
               />
+
+              {/* Token whitelist status */}
+              {formData.token &&
+                formData.token !== ZERO_ADDRESS &&
+                !checkingToken && (
+                  <div className="flex items-center gap-2 text-sm">
+                    {tokenWhitelisted === true ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                        <span className="text-green-500">
+                          Token is whitelisted
+                        </span>
+                      </>
+                    ) : tokenWhitelisted === false ? (
+                      <>
+                        <XCircle className="h-4 w-4 text-yellow-500" />
+                        <span className="text-yellow-500">
+                          Token is not whitelisted. Only whitelisted tokens can
+                          be used.
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
+                )}
+
+              {checkingToken && (
+                <p className="text-xs text-muted-foreground">
+                  Checking token status...
+                </p>
+              )}
+
               {errors.tokenAddress ? (
                 <p className="text-red-500 text-sm mt-1">
                   {errors.tokenAddress}
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Enter the contract address of your ERC20 token deployed on
-                  Arbitrum Sepolia Testnet. Default: MockERC20 token
+                  {whitelistedTokens.length > 0
+                    ? "Select a whitelisted token above or enter a custom token address. Only whitelisted tokens are accepted."
+                    : "Enter the contract address of your ERC20 token. The token must be whitelisted by the platform admin."}
                 </p>
               )}
             </div>

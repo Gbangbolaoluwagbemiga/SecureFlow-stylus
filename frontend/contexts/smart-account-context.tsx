@@ -59,20 +59,52 @@ export function SmartAccountProvider({ children }: { children: ReactNode }) {
   const [safeFactory, setSafeFactory] = useState<any>(null);
 
   useEffect(() => {
-    if (wallet.isConnected) {
-      initializeSmartAccount();
+    if (wallet.isConnected && wallet.address) {
+      // Add a longer delay to ensure the initial connection is fully established
+      // This prevents conflicts with AppKit's connection flow and any network switching
+      const timer = setTimeout(() => {
+        // Double-check that wallet is still connected before initializing
+        if (wallet.isConnected && wallet.address) {
+          initializeSmartAccount();
+        }
+      }, 2000); // Wait 2 seconds after connection to avoid MetaMask request conflicts
+
+      return () => clearTimeout(timer);
+    } else {
+      // Reset smart account state when disconnected
+      setSmartAccount({
+        isInitialized: false,
+        safeAddress: null,
+        isDeployed: false,
+        balance: "0",
+        nonce: 0,
+      });
     }
-  }, [wallet.isConnected]);
+  }, [wallet.isConnected, wallet.address]);
 
   const initializeSmartAccount = async () => {
     try {
+      // Prevent duplicate initialization
+      if (smartAccount.isInitialized && smartAccount.safeAddress) {
+        return;
+      }
+
       if (!window.ethereum) {
         throw new Error("MetaMask not found");
       }
 
+      // Use the wallet address from context instead of requesting a new signer
+      // This prevents triggering another MetaMask connection request
+      if (!wallet.address) {
+        console.warn(
+          "Wallet address not available, skipping smart account initialization"
+        );
+        return;
+      }
+
       const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const address = await signer.getAddress();
+      // Use the address from wallet context instead of getSigner() to avoid new connection requests
+      const address = wallet.address;
 
       // Create a deterministic Smart Account address based on user's EOA
       // This simulates a real Smart Account deployment
@@ -86,6 +118,8 @@ export function SmartAccountProvider({ children }: { children: ReactNode }) {
       const code = await provider.getCode(smartAccountAddress);
       const isDeployed = code !== "0x";
 
+      const wasInitialized = smartAccount.isInitialized;
+
       setSmartAccount({
         isInitialized: true,
         safeAddress: smartAccountAddress,
@@ -94,13 +128,16 @@ export function SmartAccountProvider({ children }: { children: ReactNode }) {
         nonce: 0,
       });
 
-      toast({
-        title: "Smart Account Initialized",
-        description: `Smart Account: ${smartAccountAddress.slice(
-          0,
-          6
-        )}...${smartAccountAddress.slice(-4)}`,
-      });
+      // Only show toast if this is a new initialization (not on every connection)
+      if (!wasInitialized) {
+        toast({
+          title: "Smart Account Initialized",
+          description: `Smart Account: ${smartAccountAddress.slice(
+            0,
+            6
+          )}...${smartAccountAddress.slice(-4)}`,
+        });
+      }
     } catch (error: any) {
       console.error("Smart Account initialization failed:", error);
       toast({

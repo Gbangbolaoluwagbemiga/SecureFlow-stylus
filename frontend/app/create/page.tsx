@@ -100,8 +100,8 @@ export default function CreateEscrowPage() {
     duration: "",
     totalBudget: "",
     beneficiary: "",
-    token: CONTRACTS.MOCK_ERC20, // Default to deployed MockERC20
-    useNativeToken: false,
+    token: ZERO_ADDRESS, // Default to native ETH (safer - no token contract needed)
+    useNativeToken: true, // Default to native token
     isOpenJob: false,
     milestones: [
       { description: "", amount: "" },
@@ -352,6 +352,32 @@ export default function CreateEscrowPage() {
 
     try {
       if (formData.token !== ZERO_ADDRESS) {
+        // First check if token is whitelisted
+        const escrowContract = getContract(
+          CONTRACTS.SECUREFLOW_ESCROW,
+          SECUREFLOW_ABI
+        );
+        try {
+          const isWhitelisted = await escrowContract.call(
+            "whitelistedTokens",
+            formData.token
+          );
+          if (!isWhitelisted) {
+            throw new Error(
+              "Token is not whitelisted. Please use a whitelisted token or contact the admin to whitelist this token."
+            );
+          }
+        } catch (whitelistError: any) {
+          if (whitelistError.message?.includes("not whitelisted")) {
+            throw whitelistError;
+          }
+          // If check fails, continue with validation (might be network issue)
+          console.warn(
+            "Could not verify token whitelist status:",
+            whitelistError
+          );
+        }
+
         const tokenContract = getContract(formData.token, ERC20_ABI);
         const totalAmountInWei = BigInt(
           Math.floor(Number.parseFloat(formData.totalBudget) * 10 ** 18)
@@ -359,12 +385,70 @@ export default function CreateEscrowPage() {
 
         // Test if token contract is working
         try {
-          const tokenName = await tokenContract.call("name");
-          const tokenSymbol = await tokenContract.call("symbol");
-          const tokenDecimals = await tokenContract.call("decimals");
-        } catch (tokenError) {
+          // First check if contract exists
+          const { ethers } = await import("ethers");
+          const provider = new ethers.JsonRpcProvider(
+            "https://sepolia-rollup.arbitrum.io/rpc"
+          );
+          const code = await provider.getCode(formData.token);
+
+          if (code === "0x" || code === "0x0") {
+            throw new Error(
+              "Token address does not contain a contract. Please check the token address or use native ETH (0x0000...0000) instead."
+            );
+          }
+
+          // Try to call name() - if it fails, the contract might not be a valid ERC20
+          let tokenName, tokenSymbol, tokenDecimals;
+          try {
+            tokenName = await tokenContract.call("name");
+            tokenSymbol = await tokenContract.call("symbol");
+            tokenDecimals = await tokenContract.call("decimals");
+
+            // Check for empty return data (0x means function doesn't exist or returned empty)
+            if (
+              !tokenName ||
+              tokenName === "" ||
+              tokenName === "0x" ||
+              !tokenSymbol ||
+              tokenSymbol === "" ||
+              tokenSymbol === "0x" ||
+              tokenDecimals === undefined ||
+              tokenDecimals === null
+            ) {
+              throw new Error(
+                "Token contract does not implement standard ERC20 functions. The contract exists but doesn't have name(), symbol(), or decimals() functions."
+              );
+            }
+          } catch (callError: any) {
+            // Check if it's a decode error (empty return data)
+            if (
+              callError.message?.includes("could not decode") ||
+              callError.message?.includes("BAD_DATA") ||
+              callError.code === "BAD_DATA"
+            ) {
+              throw new Error(
+                `Token contract at ${formData.token.slice(
+                  0,
+                  10
+                )}... does not implement standard ERC20 functions (name, symbol, decimals). Please use a valid ERC20 token address or use native ETH instead.`
+              );
+            }
+
+            // Contract exists but doesn't have standard ERC20 functions
+            throw new Error(
+              `Token contract does not implement standard ERC20 functions. Error: ${
+                callError.message || "Unknown error"
+              }. Please use a valid ERC20 token address or use native ETH (0x0000...0000) instead.`
+            );
+          }
+        } catch (tokenError: any) {
+          // Re-throw with better error message
+          if (tokenError.message) {
+            throw tokenError;
+          }
           throw new Error(
-            "Token contract is not working properly. Please check the token address."
+            "Token contract is not working properly. Please check the token address or use native ETH instead."
           );
         }
 
@@ -409,7 +493,7 @@ export default function CreateEscrowPage() {
         (m) => m.description
       );
 
-      const beneficiaryAddress = isOpenJob
+      const beneficiaryAddress = formData.isOpenJob
         ? "0x0000000000000000000000000000000000000000" // Zero address for open jobs
         : formData.beneficiary || "0x0000000000000000000000000000000000000000";
 
@@ -450,44 +534,32 @@ export default function CreateEscrowPage() {
           BigInt(Math.floor(Number.parseFloat(m.amount) * 10 ** 18)).toString()
         );
 
-        const arbiters = ["0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41"]; // Default arbiter
+        // Check if arbiter is authorized before using
+        const defaultArbiter = "0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41";
+        let arbiters = [defaultArbiter];
         const requiredConfirmations = 1;
+
+        // Verify arbiter is authorized (contract requires authorized arbiters)
+        try {
+          const isArbiterAuthorized = await escrowContract.call(
+            "authorizedArbiters",
+            defaultArbiter
+          );
+          if (!isArbiterAuthorized) {
+            throw new Error(
+              "Default arbiter is not authorized. Please go to the Admin page and authorize an arbiter first, or create an open job (which doesn't require arbiters initially)."
+            );
+          }
+        } catch (arbiterError: any) {
+          if (arbiterError.message?.includes("not authorized")) {
+            throw arbiterError;
+          }
+          console.warn("Could not verify arbiter authorization:", arbiterError);
+          // Continue anyway - contract will revert if arbiter not authorized
+        }
 
         // Convert duration from days to seconds
         const durationInSeconds = Number(formData.duration) * 24 * 60 * 60;
-
-        // Try to estimate gas first with retry logic
-        let gasEstimate;
-        let gasEstimateAttempts = 0;
-        const maxGasEstimateAttempts = 3;
-
-        while (gasEstimateAttempts < maxGasEstimateAttempts) {
-          try {
-            gasEstimate = await escrowContract.estimateGas(
-              "createEscrowNative",
-              totalAmountInWei, // msg.value in wei
-              beneficiaryAddress,
-              arbiters,
-              requiredConfirmations,
-              milestoneAmountsInWei,
-              milestoneDescriptions,
-              durationInSeconds,
-              formData.projectTitle,
-              formData.projectDescription
-            );
-            break;
-          } catch (gasError) {
-            gasEstimateAttempts++;
-
-            if (gasEstimateAttempts >= maxGasEstimateAttempts) {
-              gasEstimate = BigInt(500000); // Default gas limit
-              break;
-            }
-
-            // Wait before retry
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-          }
-        }
 
         // Retry transaction with exponential backoff
         let txAttempts = 0;
@@ -523,10 +595,12 @@ export default function CreateEscrowPage() {
                   "Escrow created with no gas fees using Smart Account delegation",
               });
             } else {
-              // Use regular transaction
+              // Use regular transaction - convert wei to hex string for value
+              const valueInHex = `0x${BigInt(totalAmountInWei).toString(16)}`;
+
               txHash = await escrowContract.send(
                 "createEscrowNative",
-                `0x${BigInt(totalAmountInWei).toString(16)}`, // Convert wei to hex for msg.value
+                valueInHex, // msg.value in hex (native ETH amount)
                 beneficiaryAddress, // beneficiary parameter
                 arbiters, // arbiters parameter
                 requiredConfirmations, // requiredConfirmations parameter
@@ -543,10 +617,47 @@ export default function CreateEscrowPage() {
               });
             }
             break;
-          } catch (txError) {
+          } catch (txError: any) {
             txAttempts++;
 
             if (txAttempts >= maxTxAttempts) {
+              // Provide better error message
+              const errorMessage = txError.message || "Unknown error";
+              if (errorMessage.includes("execution reverted")) {
+                // Check common revert reasons
+                let specificError =
+                  "Transaction failed. The contract reverted.";
+
+                if (
+                  errorMessage.includes("ArbiterNotAuthorized") ||
+                  errorMessage.includes("arbiter")
+                ) {
+                  specificError =
+                    "Arbiter is not authorized. Please go to Admin page and authorize an arbiter first.";
+                } else if (
+                  errorMessage.includes("TokenNotWhitelisted") ||
+                  errorMessage.includes("token")
+                ) {
+                  specificError =
+                    "Token is not whitelisted. Please whitelist the token from the Admin page.";
+                } else if (errorMessage.includes("paused")) {
+                  specificError =
+                    "Contract is paused. Please unpause from Admin page.";
+                } else if (
+                  errorMessage.includes("InvalidAmount") ||
+                  errorMessage.includes("amount")
+                ) {
+                  specificError =
+                    "Invalid amount. Check: 1) Total milestone amounts match project budget, 2) Amounts are greater than 0, 3) You sent the correct ETH value.";
+                } else if (errorMessage.includes("InvalidDuration")) {
+                  specificError =
+                    "Invalid duration. Duration must be between 1 hour and 365 days.";
+                }
+
+                throw new Error(
+                  `${specificError} Common checks: 1) Contract is not paused, 2) Arbiter is authorized, 3) Token is whitelisted (if using ERC20), 4) You have sufficient balance, 5) All parameters are valid.`
+                );
+              }
               throw txError;
             }
 
@@ -557,8 +668,28 @@ export default function CreateEscrowPage() {
         }
       } else {
         // Use createEscrow for ERC20 tokens
-        const arbiters = ["0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41"]; // Default arbiter
+        // Check if arbiter is authorized before using
+        const defaultArbiter = "0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41";
+        let arbiters = [defaultArbiter];
         const requiredConfirmations = 1;
+
+        // Verify arbiter is authorized
+        try {
+          const isArbiterAuthorized = await escrowContract.call(
+            "authorizedArbiters",
+            defaultArbiter
+          );
+          if (!isArbiterAuthorized) {
+            if (!isOpenJob) {
+              throw new Error(
+                "Default arbiter is not authorized. Please authorize an arbiter from the admin page first, or create an open job."
+              );
+            }
+            arbiters = [];
+          }
+        } catch (arbiterError) {
+          console.warn("Could not verify arbiter authorization:", arbiterError);
+        }
 
         // Convert milestone amounts to wei for ERC20 tokens
         const milestoneAmountsInWei = formData.milestones.map((m) =>
@@ -846,7 +977,16 @@ export default function CreateEscrowPage() {
                 <ProjectDetailsStep
                   formData={formData}
                   onUpdate={(data) => {
-                    setFormData({ ...formData, ...data });
+                    // If useNativeToken is checked, automatically set token to ZERO_ADDRESS
+                    if (data.useNativeToken) {
+                      setFormData({
+                        ...formData,
+                        ...data,
+                        token: ZERO_ADDRESS,
+                      });
+                    } else {
+                      setFormData({ ...formData, ...data });
+                    }
                     clearErrors();
                   }}
                   isContractPaused={isContractPaused}

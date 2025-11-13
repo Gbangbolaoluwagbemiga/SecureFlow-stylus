@@ -22,7 +22,12 @@ export function ErrorSuppressor() {
         lowerMessage.includes("failed to fetch") ||
         lowerMessage.includes("net::err_blocked_by_client") ||
         lowerMessage.includes("content-script error") ||
-        lowerMessage.includes("cannot read properties of null")
+        lowerMessage.includes("cannot read properties of null") ||
+        lowerMessage.includes("cannot redefine property: ethereum") ||
+        lowerMessage.includes("redefine property") ||
+        lowerMessage.includes("evmask.js") ||
+        lowerMessage.includes("message channel closed") ||
+        lowerMessage.includes("asynchronous response")
       );
     };
 
@@ -51,13 +56,71 @@ export function ErrorSuppressor() {
       );
     };
 
+    // Override console.error to catch and suppress specific errors
     console.error = function (...args: any[]) {
       const message = args.join(" ");
+
+      // Check if it's the ethereum redefinition error specifically
+      if (
+        message.includes("Cannot redefine property: ethereum") ||
+        (message.includes("redefine property") && message.includes("ethereum"))
+      ) {
+        // This is a known issue with wallet injection libraries - safe to ignore
+        return;
+      }
+
       if (shouldSuppressError(message)) {
         return; // Silently ignore
       }
       originalError.apply(console, args);
     };
+
+    // Also catch uncaught errors related to ethereum redefinition via window.onerror
+    if (typeof window !== "undefined") {
+      const originalOnError = window.onerror;
+      window.onerror = function (message, source, lineno, colno, error) {
+        const errorMessage = String(message || "");
+        if (
+          errorMessage.includes("Cannot redefine property: ethereum") ||
+          (errorMessage.includes("redefine property") &&
+            errorMessage.includes("ethereum"))
+        ) {
+          // Suppress this specific error
+          return true; // Prevent default error handling
+        }
+        // Call original handler if it exists
+        if (originalOnError) {
+          return originalOnError.call(
+            this,
+            message,
+            source,
+            lineno,
+            colno,
+            error
+          );
+        }
+        return false;
+      };
+
+      // Also catch unhandled promise rejections
+      const originalOnUnhandledRejection = window.onunhandledrejection;
+      window.onunhandledrejection = function (event) {
+        const errorMessage = String(
+          event.reason?.message || event.reason || ""
+        );
+        if (
+          errorMessage.includes("Cannot redefine property: ethereum") ||
+          (errorMessage.includes("redefine property") &&
+            errorMessage.includes("ethereum"))
+        ) {
+          event.preventDefault();
+          return;
+        }
+        if (originalOnUnhandledRejection) {
+          originalOnUnhandledRejection.call(this, event);
+        }
+      };
+    }
 
     console.warn = function (...args: any[]) {
       const message = args.join(" ");
@@ -80,6 +143,12 @@ export function ErrorSuppressor() {
       console.error = originalError;
       console.warn = originalWarn;
       console.log = originalLog;
+
+      if (typeof window !== "undefined") {
+        // Restore original error handlers if they were overridden
+        // Note: We can't fully restore window.onerror as we don't have the original
+        // but this is fine as the component should persist for the app lifetime
+      }
     };
   }, []);
 

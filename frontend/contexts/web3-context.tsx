@@ -20,6 +20,7 @@ interface Web3ContextType {
   switchToArbitrumSepolia: () => Promise<void>;
   getContract: (address: string, abi: any) => any;
   isOwner: boolean;
+  refreshBalance: () => Promise<void>;
 }
 
 const Web3Context = createContext<Web3ContextType | undefined>(undefined);
@@ -33,60 +34,20 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     balance: "0",
   });
   const [isOwner, setIsOwner] = useState(false);
-  const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
 
+  // Check for existing connection on mount
   useEffect(() => {
-    checkConnection();
-
-    if (typeof window !== "undefined" && window.ethereum) {
-      window.ethereum.on("accountsChanged", handleAccountsChanged);
-      window.ethereum.on("chainChanged", handleChainChanged);
-    }
-
-    // Re-check connection periodically to catch AppKit connections
-    // Only poll if not connected to avoid unnecessary checks
-    // Increased interval to reduce conflicts
-    const interval = setInterval(() => {
-      if (!wallet.isConnected && !isConnecting) {
-        // Use a small delay to avoid race conditions
-        setTimeout(() => {
-          if (!wallet.isConnected && !isConnecting) {
-            checkConnection();
-          }
-        }, 100);
+    const checkConnection = async () => {
+      if (typeof window === "undefined" || !window.ethereum) {
+        return;
       }
-    }, 5000); // Check every 5 seconds if not connected (reduced frequency)
 
-    return () => {
-      clearInterval(interval);
-      if (typeof window !== "undefined" && window.ethereum) {
-        window.ethereum.removeListener(
-          "accountsChanged",
-          handleAccountsChanged
-        );
-        window.ethereum.removeListener("chainChanged", handleChainChanged);
-      }
-    };
-  }, [wallet.isConnected, isConnecting]);
+      try {
+        const accounts = await window.ethereum.request({
+          method: "eth_accounts",
+        });
 
-  const checkConnection = async () => {
-    if (typeof window === "undefined" || !window.ethereum || isConnecting)
-      return;
-
-    try {
-      const accounts = await window.ethereum.request({
-        method: "eth_accounts",
-      });
-      
-      // Only update if accounts exist and we're not already showing them as connected
-      // This prevents stale state issues
-      if (accounts.length > 0) {
-        const currentAddress = accounts[0].toLowerCase();
-        const existingAddress = wallet.address?.toLowerCase();
-        
-        // Only update if address changed or not connected
-        if (currentAddress !== existingAddress || !wallet.isConnected) {
+        if (accounts.length > 0) {
           const chainId = await window.ethereum.request({
             method: "eth_chainId",
           });
@@ -102,43 +63,74 @@ export function Web3Provider({ children }: { children: ReactNode }) {
             balance: (Number.parseInt(balance, 16) / 1e18).toFixed(4),
           });
 
-          await checkOwnerStatus(accounts[0]);
+          const knownOwner = "0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41";
+          setIsOwner(accounts[0].toLowerCase() === knownOwner.toLowerCase());
         }
-      } else if (wallet.isConnected) {
-        // Accounts were cleared but we still think we're connected - disconnect
-        disconnectWallet();
+      } catch (error) {
+        console.error("Error checking wallet connection:", error);
       }
-    } catch (error) {
-      // Silently fail - don't spam errors for background checks
-      // But log in debug mode for troubleshooting
-      if (process.env.NODE_ENV === "development") {
-        console.debug("Connection check error:", error);
-      }
+    };
+
+    checkConnection();
+
+    if (typeof window !== "undefined" && window.ethereum) {
+      const handleAccountsChanged = async (accounts: string[]) => {
+        if (accounts.length === 0) {
+          setWallet({
+            address: null,
+            chainId: null,
+            isConnected: false,
+            balance: "0",
+          });
+          setIsOwner(false);
+        } else {
+          try {
+            const chainId = await window.ethereum?.request({
+              method: "eth_chainId",
+            });
+            const balance = await window.ethereum?.request({
+              method: "eth_getBalance",
+              params: [accounts[0], "latest"],
+            });
+
+            setWallet((prev) => ({
+              ...prev,
+              address: accounts[0],
+              chainId: chainId ? Number.parseInt(chainId, 16) : prev.chainId,
+              isConnected: true,
+              balance: balance
+                ? (Number.parseInt(balance, 16) / 1e18).toFixed(4)
+                : prev.balance,
+            }));
+
+            const knownOwner = "0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41";
+            setIsOwner(accounts[0].toLowerCase() === knownOwner.toLowerCase());
+          } catch (error) {
+            setWallet((prev) => ({ ...prev, address: accounts[0] }));
+            const knownOwner = "0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41";
+            setIsOwner(accounts[0].toLowerCase() === knownOwner.toLowerCase());
+          }
+        }
+      };
+
+      const handleChainChanged = () => {
+        window.location.reload();
+      };
+
+      window.ethereum.on("accountsChanged", handleAccountsChanged);
+      window.ethereum.on("chainChanged", handleChainChanged);
+
+      return () => {
+        if (window.ethereum) {
+          window.ethereum.removeListener(
+            "accountsChanged",
+            handleAccountsChanged
+          );
+          window.ethereum.removeListener("chainChanged", handleChainChanged);
+        }
+      };
     }
-  };
-
-  const checkOwnerStatus = async (address: string) => {
-    try {
-      const knownOwner = "0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41";
-
-      setIsOwner(address.toLowerCase() === knownOwner.toLowerCase());
-    } catch (error) {
-      setIsOwner(false);
-    }
-  };
-
-  const handleAccountsChanged = (accounts: string[]) => {
-    if (accounts.length === 0) {
-      disconnectWallet();
-    } else {
-      setWallet((prev) => ({ ...prev, address: accounts[0] }));
-      checkOwnerStatus(accounts[0]);
-    }
-  };
-
-  const handleChainChanged = () => {
-    window.location.reload();
-  };
+  }, []);
 
   const connectWallet = async () => {
     if (typeof window === "undefined" || !window.ethereum) {
@@ -150,18 +142,6 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Prevent multiple simultaneous connection attempts
-    if (isConnecting) {
-      toast({
-        title: "Connection in progress",
-        description:
-          "Please wait for the current connection request to complete",
-        variant: "default",
-      });
-      return;
-    }
-
-    // Check if already connected
     if (wallet.isConnected) {
       toast({
         title: "Already connected",
@@ -173,35 +153,10 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setIsConnecting(true);
-
     try {
-      // First check if accounts are already available (from previous session)
-      let accounts;
-      try {
-        const existingAccounts = await window.ethereum.request({
-          method: "eth_accounts",
-        });
-        if (existingAccounts.length > 0) {
-          accounts = existingAccounts;
-        } else {
-          // Only request new connection if no accounts exist
-          accounts = await window.ethereum.request({
-            method: "eth_requestAccounts",
-          });
-        }
-      } catch (requestError: any) {
-        // If request fails, it might be because user rejected or another request is pending
-        if (requestError.code === 4001) {
-          toast({
-            title: "Connection cancelled",
-            description: "Please try again when ready",
-            variant: "default",
-          });
-          return;
-        }
-        throw requestError;
-      }
+      const accounts = await window.ethereum.request({
+        method: "eth_requestAccounts",
+      });
 
       const chainId = await window.ethereum.request({ method: "eth_chainId" });
       const chainIdNumber = Number.parseInt(chainId, 16);
@@ -217,26 +172,16 @@ export function Web3Provider({ children }: { children: ReactNode }) {
         balance: (Number.parseInt(balance, 16) / 1e18).toFixed(4),
       });
 
-      await checkOwnerStatus(accounts[0]);
+      const knownOwner = "0x3be7fbbdbc73fc4731d60ef09c4ba1a94dc58e41";
+      setIsOwner(accounts[0].toLowerCase() === knownOwner.toLowerCase());
 
       const targetChainId = Number.parseInt(ARBITRUM_SEPOLIA.chainId, 16);
 
       if (chainIdNumber !== targetChainId) {
-        // Automatically try to switch/add the correct network
         try {
           await switchToArbitrumSepolia();
-          toast({
-            title: "Network switched",
-            description: "Connected to Arbitrum Sepolia Testnet",
-          });
         } catch (switchError: any) {
           console.error("Failed to auto-switch network:", switchError);
-          toast({
-            title: "Network switch needed",
-            description:
-              "Please switch to Arbitrum Sepolia Testnet manually in your wallet",
-            variant: "destructive",
-          });
         }
       } else {
         toast({
@@ -248,21 +193,10 @@ export function Web3Provider({ children }: { children: ReactNode }) {
         });
       }
     } catch (error: any) {
-      // Handle specific MetaMask errors
       if (error.code === 4001) {
         toast({
           title: "Connection declined",
           description: "Please approve the connection request in MetaMask",
-          variant: "default",
-        });
-      } else if (
-        error.message?.includes("pending") ||
-        error.message?.includes("active")
-      ) {
-        toast({
-          title: "Connection pending",
-          description:
-            "A previous connection request is still active. Please check MetaMask and try again in a moment.",
           variant: "default",
         });
       } else {
@@ -273,8 +207,6 @@ export function Web3Provider({ children }: { children: ReactNode }) {
           variant: "destructive",
         });
       }
-    } finally {
-      setIsConnecting(false);
     }
   };
 
@@ -286,18 +218,10 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       balance: "0",
     });
     setIsOwner(false);
-    toast({
-      title: "Wallet disconnected",
-      description: "Your wallet has been disconnected",
-    });
   };
 
   const switchToArbitrumOne = async () => {
     if (typeof window === "undefined" || !window.ethereum) return;
-
-    if (isSwitchingNetwork) {
-      return;
-    }
 
     const currentChainId = await window.ethereum.request({
       method: "eth_chainId",
@@ -312,8 +236,6 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       });
       return;
     }
-
-    setIsSwitchingNetwork(true);
 
     try {
       await window.ethereum.request({
@@ -356,17 +278,11 @@ export function Web3Provider({ children }: { children: ReactNode }) {
           variant: "destructive",
         });
       }
-    } finally {
-      setIsSwitchingNetwork(false);
     }
   };
 
   const switchToArbitrumSepolia = async () => {
     if (typeof window === "undefined" || !window.ethereum) return;
-
-    if (isSwitchingNetwork) {
-      return;
-    }
 
     const currentChainId = await window.ethereum.request({
       method: "eth_chainId",
@@ -382,10 +298,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setIsSwitchingNetwork(true);
-
     try {
-      // First try to switch to Arbitrum Sepolia Testnet
       await window.ethereum.request({
         method: "wallet_switchEthereumChain",
         params: [{ chainId: ARBITRUM_SEPOLIA.chainId }],
@@ -397,7 +310,6 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       });
     } catch (error: any) {
       if (error.code === 4902) {
-        // Network not found, add it
         try {
           await window.ethereum.request({
             method: "wallet_addEthereumChain",
@@ -439,14 +351,12 @@ export function Web3Provider({ children }: { children: ReactNode }) {
           variant: "destructive",
         });
       }
-    } finally {
-      setIsSwitchingNetwork(false);
     }
   };
 
   const getContract = (address: string, abi: any) => {
     if (typeof window === "undefined" || !window.ethereum) return null;
-    // Normalize address to a valid checksum to avoid INVALID_ARGUMENT errors
+
     let targetAddress = address;
     try {
       targetAddress = ethers.getAddress(address.toLowerCase());
@@ -455,30 +365,34 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     return {
       async call(method: string, ...args: any[]) {
         try {
-          // Use direct RPC connection for read operations to avoid MetaMask issues
           const provider = new ethers.JsonRpcProvider(
             ARBITRUM_SEPOLIA.rpcUrls[0]
           );
           const contract = new ethers.Contract(targetAddress, abi, provider);
-
-          // Call the contract method directly
           const result = await contract[method](...args);
+
+          // For owner() calls, ensure we return a clean address string
+          if (method === "owner" && result) {
+            try {
+              return ethers.getAddress(result);
+            } catch (e) {
+              return String(result);
+            }
+          }
+
           return result;
         } catch (error) {
+          console.error(`Contract call error for ${method}:`, error);
           throw error;
         }
       },
       async send(method: string, value: string = "0x0", ...args: any[]) {
         try {
-          // First, ensure we're on the correct network
           const currentChainId = await window.ethereum.request({
             method: "eth_chainId",
           });
 
-          // Check if we're on Arbitrum Sepolia
           const targetChainId = ARBITRUM_SEPOLIA.chainId;
-
-          // Convert to lowercase for case-insensitive comparison
           const currentChainIdLower = currentChainId.toLowerCase();
           const targetChainIdLower = targetChainId.toLowerCase();
 
@@ -488,27 +402,11 @@ export function Web3Provider({ children }: { children: ReactNode }) {
             );
           }
 
-          // Additional check: verify we're on Arbitrum Sepolia
-          // by checking if we can connect to Arbitrum Sepolia RPC
-          try {
-            const arbitrumProvider = new ethers.JsonRpcProvider(
-              ARBITRUM_SEPOLIA.rpcUrls[0]
-            );
-            await arbitrumProvider.getBlockNumber(); // Test connection to Arbitrum Sepolia
-          } catch (arbitrumError) {
-            throw new Error(
-              `Network validation failed. Please ensure you're connected to Arbitrum Sepolia Testnet.`
-            );
-          }
-
           const data = encodeFunction(abi, method, args);
+          let gasLimit = "0x80000";
 
-          // Estimate gas for the transaction with optimized limits
-          let gasLimit = "0x80000"; // Reduced default fallback (524,288 gas)
-
-          // Force higher gas limits for specific functions that need it
           if (method === "approve") {
-            gasLimit = "0xc350"; // 50,000 gas - force higher limit for ERC20 approve
+            gasLimit = "0xc350";
           } else {
             try {
               const estimatedGas = await window.ethereum.request({
@@ -523,25 +421,23 @@ export function Web3Provider({ children }: { children: ReactNode }) {
                   },
                 ],
               });
-              // Add only 10% buffer to estimated gas (reduced from 20%)
               const gasWithBuffer = Math.floor(Number(estimatedGas) * 1.1);
               gasLimit = `0x${gasWithBuffer.toString(16)}`;
             } catch (gasError) {
-              // Use much lower, function-specific gas limits
               if (method === "unpause" || method === "pause") {
-                gasLimit = "0x20000"; // 131,072 gas - very low for simple functions
+                gasLimit = "0x20000";
               } else if (
                 method === "submitMilestone" ||
                 method === "approveMilestone" ||
                 method === "rejectMilestone" ||
                 method === "disputeMilestone"
               ) {
-                gasLimit = "0x30000"; // 196,608 gas - reduced for milestone functions
+                gasLimit = "0x30000";
               } else if (
                 method === "createEscrow" ||
                 method === "createEscrowNative"
               ) {
-                gasLimit = "0x60000"; // 393,216 gas - optimized for escrow creation
+                gasLimit = "0x60000";
               }
             }
           }
@@ -553,7 +449,6 @@ export function Web3Provider({ children }: { children: ReactNode }) {
             gas: gasLimit,
           };
 
-          // Only add value field if it's not "0x0" or "no-value" (for native token transactions)
           if (value !== "0x0" && value !== "no-value") {
             txParams.value = value;
           }
@@ -575,44 +470,39 @@ export function Web3Provider({ children }: { children: ReactNode }) {
 
   const encodeFunction = (abi: any, method: string, args: any[]) => {
     try {
-      // Create a proper interface from the ABI
       const iface = new ethers.Interface(abi);
-
-      // Encode the function call with proper parameters
       const encodedData = iface.encodeFunctionData(method, args);
-
       return encodedData;
     } catch (error) {
-      // Fallback to basic encoding for common functions
       if (method === "approve") {
-        // approve(address,uint256) selector
         return (
           "0x095ea7b3" +
           "0000000000000000000000000000000000000000000000000000000000000000".repeat(
             2
           )
         );
-      } else if (method === "createEscrow") {
-        // createEscrow function selector (this needs to be calculated from the actual function signature)
-        return (
-          "0x" +
-          "12345678" +
-          "0000000000000000000000000000000000000000000000000000000000000000".repeat(
-            8
-          )
-        );
-      } else if (method === "createEscrowNative") {
-        // createEscrowNative function selector
-        return (
-          "0x" +
-          "87654321" +
-          "0000000000000000000000000000000000000000000000000000000000000000".repeat(
-            7
-          )
-        );
       }
-
       return "0x";
+    }
+  };
+
+  const refreshBalance = async () => {
+    if (typeof window === "undefined" || !window.ethereum || !wallet.address) {
+      return;
+    }
+
+    try {
+      const balance = await window.ethereum.request({
+        method: "eth_getBalance",
+        params: [wallet.address, "latest"],
+      });
+
+      setWallet((prev) => ({
+        ...prev,
+        balance: (Number.parseInt(balance, 16) / 1e18).toFixed(4),
+      }));
+    } catch (error) {
+      console.error("Error refreshing balance:", error);
     }
   };
 
@@ -626,6 +516,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
         switchToArbitrumSepolia,
         getContract,
         isOwner,
+        refreshBalance,
       }}
     >
       {children}
@@ -641,7 +532,6 @@ export function useWeb3() {
   return context;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare global {
   interface Window {
     ethereum?: any;

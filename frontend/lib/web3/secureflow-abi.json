@@ -73,6 +73,7 @@
   "function milestones(uint256,uint256) view returns (string,uint256,uint8,uint256,uint256,uint256,address,string)",
   "function token() view returns (address)",
   "function nextEscrowId() view returns (uint256)",
+  "function init()",
   "function owner() view returns (address)",
   "function pause()",
   "function pauseJobCreation()",

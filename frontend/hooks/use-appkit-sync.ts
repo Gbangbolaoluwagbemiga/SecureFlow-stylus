@@ -19,35 +19,47 @@ export function useAppKitSync() {
       typeof window !== "undefined" &&
       window.ethereum
     ) {
-      // Use a timeout to debounce and avoid multiple simultaneous requests
+      // Use a longer timeout to ensure AppKit connection is fully established
+      // This prevents conflicts with other connection attempts
       const timeoutId = setTimeout(() => {
-        // Check existing accounts to sync with Web3 context
-        window.ethereum.request({ method: "eth_accounts" }).catch(() => {
-          // Ignore errors - this is just a sync check
-        });
+        // Only sync if window.ethereum is available and not in a pending state
+        // Use eth_accounts (read-only) instead of eth_requestAccounts to avoid new prompts
+        window.ethereum
+          .request({ method: "eth_accounts" })
+          .then((accounts: string[]) => {
+            // Only proceed if we have accounts and they match AppKit's address
+            if (
+              accounts.length > 0 &&
+              accounts[0].toLowerCase() === address.toLowerCase()
+            ) {
+              // Ensure we're on Arbitrum Sepolia after connection
+              // But wait a bit longer to avoid conflicts
+              setTimeout(async () => {
+                try {
+                  const chainId = await window.ethereum.request({
+                    method: "eth_chainId",
+                  });
+                  const chainIdNumber = Number.parseInt(chainId, 16);
+                  const targetChainId = Number.parseInt(
+                    ARBITRUM_SEPOLIA.chainId,
+                    16
+                  );
 
-        // Ensure we're on Arbitrum Sepolia after connection
-        const checkAndSwitchNetwork = async () => {
-          try {
-            const chainId = await window.ethereum.request({
-              method: "eth_chainId",
-            });
-            const chainIdNumber = Number.parseInt(chainId, 16);
-            const targetChainId = Number.parseInt(ARBITRUM_SEPOLIA.chainId, 16);
-
-            if (chainIdNumber !== targetChainId) {
-              // Automatically switch/add Arbitrum Sepolia network
-              await switchToArbitrumSepolia();
+                  if (chainIdNumber !== targetChainId) {
+                    // Automatically switch/add Arbitrum Sepolia network
+                    await switchToArbitrumSepolia();
+                  }
+                } catch (error) {
+                  // Silently fail - network switching is not critical
+                  console.debug("Network check/switching:", error);
+                }
+              }, 2000); // Wait 2 seconds before network check to avoid conflicts
             }
-          } catch (error) {
-            // Silently fail - network switching is not critical
-            console.debug("Network check/switching:", error);
-          }
-        };
-
-        // Wait a bit for the connection to fully establish
-        setTimeout(checkAndSwitchNetwork, 1000);
-      }, 300);
+          })
+          .catch(() => {
+            // Ignore errors - this is just a sync check
+          });
+      }, 500); // Increased delay to ensure connection is fully established
 
       return () => clearTimeout(timeoutId);
     }

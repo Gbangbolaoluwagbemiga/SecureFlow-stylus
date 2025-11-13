@@ -11,7 +11,7 @@ import { Navbar } from "@/components/navbar";
 import { Toaster } from "@/components/ui/toaster";
 import { Suspense } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
-import { AppKit } from "@/lib/web3/reown-config";
+// AppKit removed - using direct window.ethereum connection instead
 import { ErrorSuppressor } from "@/components/error-suppressor";
 
 export const metadata: Metadata = {
@@ -21,9 +21,9 @@ export const metadata: Metadata = {
   generator: "SecureFlow",
   manifest: "/manifest.json",
   icons: {
-    icon: "/secureflow-favicon.svg?v=2",
-    apple: "/secureflow-favicon.svg?v=2",
-    shortcut: "/secureflow-favicon.svg?v=2",
+    icon: "/arbitrum-icon.svg?v=1",
+    apple: "/arbitrum-icon.svg?v=1",
+    shortcut: "/arbitrum-icon.svg?v=1",
   },
 };
 
@@ -35,12 +35,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <link
-          rel="icon"
-          href="/secureflow-favicon.svg?v=2"
-          type="image/svg+xml"
-        />
-        <link rel="apple-touch-icon" href="/secureflow-favicon.svg?v=2" />
+        <link rel="icon" href="/arbitrum-icon.svg?v=1" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/arbitrum-icon.svg?v=1" />
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
@@ -51,21 +47,19 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AppKit>
-            <Suspense fallback={<div>Loading...</div>}>
-              <Web3Provider>
-                <DelegationProvider>
-                  <SmartAccountProvider>
-                    <NotificationProvider>
-                      <Navbar />
-                      <main className="pt-16">{children}</main>
-                      <Toaster />
-                    </NotificationProvider>
-                  </SmartAccountProvider>
-                </DelegationProvider>
-              </Web3Provider>
-            </Suspense>
-          </AppKit>
+          <Suspense fallback={<div>Loading...</div>}>
+            <Web3Provider>
+              <DelegationProvider>
+                <SmartAccountProvider>
+                  <NotificationProvider>
+                    <Navbar />
+                    <main className="pt-16">{children}</main>
+                    <Toaster />
+                  </NotificationProvider>
+                </SmartAccountProvider>
+              </DelegationProvider>
+            </Web3Provider>
+          </Suspense>
         </ThemeProvider>
       </body>
     </html>
